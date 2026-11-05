@@ -1,0 +1,8 @@
+#!/bin/bash
+# After every Omarchy update, mirror the config the update may have changed
+# (migrations rewrite shell.json, bar layouts and the like) into the
+# omarchy-setup repo and push it. Skips quietly if the repo isn't here.
+
+sync="$HOME/Projects/omarchy-setup/bin/sync"
+[[ -x $sync ]] || exit 0
+"$sync" --quiet || true
