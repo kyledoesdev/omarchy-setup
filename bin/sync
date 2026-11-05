@@ -132,6 +132,14 @@ say "Committed: $summary"
 log "committed: $summary"
 
 if ((PUSH)); then
+  # Pick up edits made on GitHub (like README tweaks) first. A conflict leaves
+  # the commit here for a person to sort out rather than guessing.
+  if ! git pull -q --rebase 2>>"$LOG"; then
+    git rebase --abort 2>/dev/null
+    say "Couldn't pull GitHub's changes cleanly; the commit is saved here. See $LOG"
+    log "pull --rebase failed"
+    exit 0
+  fi
   if git push -q 2>>"$LOG"; then
     say "Pushed."
   else
