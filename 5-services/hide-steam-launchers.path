@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch for new Steam game menu entries
+
+[Path]
+PathModified=%h/.local/share/applications
+Unit=hide-steam-launchers.service
+
+[Install]
+WantedBy=default.target

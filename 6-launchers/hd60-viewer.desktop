@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=HD60 S+ Viewer
+Comment=Clean full-screen view of the Elgato HD60 S+ (no overlays)
+Exec=hd60-view
+Icon=camera-video
+Categories=AudioVideo;Video;
+Terminal=false

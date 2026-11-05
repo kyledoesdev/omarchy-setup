@@ -1,0 +1,28 @@
+#!/bin/bash
+# Wrapper for workspace-mode that detects double-tap.
+# Single press: switch to the mode.
+# Double press (same key within 500ms): switch AND reset window positions.
+#
+# Usage: workspace-mode-key <mode-name>
+
+mode=${1:?Usage: workspace-mode-key <mode-name>}
+stamp_file="${XDG_RUNTIME_DIR:-/tmp}/workspace-mode-key"
+now=$(($(date +%s%N) / 1000000))
+threshold=500
+
+prev=""
+[[ -f "$stamp_file" ]] && prev=$(cat "$stamp_file")
+prev_mode=${prev%%:*}
+prev_time=${prev#*:}
+
+echo "$mode:$now" > "$stamp_file"
+
+if [[ "$prev_mode" == "$mode" && -n "$prev_time" ]]; then
+  diff=$((now - prev_time))
+  if ((diff > 0 && diff < threshold)); then
+    rm -f "$stamp_file"
+    exec workspace-mode "$mode" --reset
+  fi
+fi
+
+exec workspace-mode "$mode"

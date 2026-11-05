@@ -1,0 +1,27 @@
+#!/bin/bash
+# Share the Elgato HD60 S+ with several apps at once (only one app can open a
+# capture card). Copies the card's video, untouched, to two v4l2loopback
+# virtual cameras - v4l2loopback 0.15 allows one reader per camera:
+#   /dev/video10  OBS's Capture Card
+#   /dev/video11  hd60-view (clean full-screen view)
+#
+# Runs as a systemd user service:   systemctl --user status hd60-split
+# Loopback setup: /etc/modprobe.d/hd60-loopback.conf, /etc/modules-load.d/hd60-loopback.conf
+
+set -euo pipefail
+
+CARD=/dev/v4l/by-id/usb-Elgato_Game_Capture_HD60_S+_0004ED30F9000-video-index0
+FOR_OBS=/dev/video10
+FOR_VIEWER=/dev/video11
+
+[[ -e $CARD ]] || { echo "HD60 S+ not connected" >&2; exit 1; }
+for dev in $FOR_OBS $FOR_VIEWER; do
+  [[ -e $dev ]] || { echo "$dev missing - is v4l2loopback loaded?" >&2; exit 1; }
+  v4l2-ctl -d "$dev" --set-parm-output=60 >/dev/null 2>&1 || true   # report 60 fps, not the default 30
+done
+
+exec ffmpeg -hide_banner -loglevel warning -nostdin \
+  -fflags nobuffer -flags low_delay -probesize 32 -analyzeduration 0 \
+  -f v4l2 -input_format nv12 -video_size 1920x1080 -framerate 60 -i "$CARD" \
+  -map 0:v -c:v rawvideo -pix_fmt nv12 -f v4l2 "$FOR_OBS" \
+  -map 0:v -c:v rawvideo -pix_fmt nv12 -f v4l2 "$FOR_VIEWER"

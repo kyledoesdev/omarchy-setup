@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Discord
+Exec=/usr/bin/vesktop %U
+Terminal=false
+Type=Application
+Icon=omarchy-discord
+StartupWMClass=vesktop
+GenericName=Internet Messenger
+Categories=Network;
+Keywords=discord;vesktop;vencord;electron;chat;voice;
+Comment=Discord (Vesktop) with per-application screen share audio
+MimeType=x-scheme-handler/discord;

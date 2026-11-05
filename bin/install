@@ -1,0 +1,90 @@
+#!/bin/bash
+# Put this repo's files in place on a machine running Omarchy.
+#
+# Usage: bin/install [--dry-run]
+#
+# Copies every manifest.tsv entry from the repo to its live path. A live file
+# that differs is kept as <name>.bak.<timestamp> first. A live path that is a
+# link is replaced, never written through. Files under /etc need root, so
+# those are only printed as commands to run. Afterwards it reloads Hyprland,
+# switches on the services listed in 5-services/enabled-units.txt and
+# restarts the Omarchy shell.
+#
+# Read "Setting up a new machine" in README.md first: monitor names and a few
+# packages are specific to the machine this came from.
+
+set -uo pipefail
+
+REPO=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
+MANIFEST="$REPO/manifest.tsv"
+STAMP=$(date +%s)
+DRY=0
+[[ ${1:-} == --dry-run ]] && DRY=1
+
+run() { if ((DRY)); then echo "would run: $*"; else "$@"; fi; }
+expand() { echo "${1/#\~/$HOME}"; }
+ROOT_FILES=()
+
+while IFS=$'\t' read -r type repo_path live_path; do
+  [[ -z $type || $type == \#* ]] && continue
+  src="$REPO/$repo_path"
+  live=$(expand "$live_path")
+  [[ -e $src ]] || { echo "Not in the repo, skipping: $repo_path"; continue; }
+
+  if [[ $live != "$HOME"/* ]]; then
+    ROOT_FILES+=("sudo install -Dm644 '$src' '$live'")
+    continue
+  fi
+
+  case $type in
+    file)
+      cmp -s "$src" "$live" 2>/dev/null && continue
+      echo "Installing $live_path"
+      run mkdir -p "$(dirname "$live")"
+      if [[ -L $live ]]; then
+        run rm "$live"
+      elif [[ -e $live ]]; then
+        run mv "$live" "$live.bak.$STAMP"
+      fi
+      run cp --preserve=mode "$src" "$live"
+      ;;
+    dir)
+      echo "Installing $live_path/"
+      [[ -L $live ]] && run rm "$live"
+      run mkdir -p "$live"
+      run rsync -a --backup --suffix=".bak.$STAMP" "$src/" "$live/"
+      ;;
+  esac
+done <"$MANIFEST"
+
+# Plugins that come from someone else's git repo are added from the source.
+while IFS=$'\t' read -r id url; do
+  [[ -z $id || $id == \#* || -z $url ]] && continue
+  [[ -d $HOME/.config/omarchy/plugins/$id ]] && continue
+  echo "Adding plugin $id from $url"
+  run omarchy plugin add "$url" --yes
+done <"$REPO/3-shell/git-plugins.txt"
+
+if ((${#ROOT_FILES[@]})); then
+  echo
+  echo "These need root. Run them yourself if you want them:"
+  printf '  %s\n' "${ROOT_FILES[@]}"
+fi
+
+echo
+run systemctl --user daemon-reload
+while read -r unit; do
+  [[ -z $unit || $unit == \#* ]] && continue
+  echo "Enabling $unit"
+  run systemctl --user enable --now "$unit"
+done <"$REPO/5-services/enabled-units.txt"
+
+if command -v hyprctl >/dev/null && hyprctl version >/dev/null 2>&1; then
+  run hyprctl reload
+fi
+if command -v omarchy >/dev/null; then
+  run omarchy restart shell
+fi
+
+echo
+echo "Done. Check README.md for the machine-specific bits (monitor names, packages)."

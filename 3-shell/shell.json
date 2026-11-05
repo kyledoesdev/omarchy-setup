@@ -1,0 +1,124 @@
+{
+  "bar": {
+    "layout": {
+      "center": [
+        {
+          "fontSize": 15,
+          "format": "dddd h:mm AP",
+          "formatAlt": "d MMMM 'W'ww yyyy",
+          "id": "kyle.clock",
+          "verticalFormat": "h\n—\nmm"
+        }
+      ],
+      "centerBegin": [
+        {
+          "id": "omarchy.indicators"
+        }
+      ],
+      "centerEnd": [
+        {
+          "cities": [
+            {
+              "name": "New York",
+              "zone": "America/New_York"
+            },
+            {
+              "name": "London",
+              "zone": "Europe/London"
+            },
+            {
+              "name": "Dubai",
+              "zone": "Asia/Dubai"
+            },
+            {
+              "name": "Tokyo",
+              "zone": "Asia/Tokyo"
+            },
+            {
+              "name": "Los Angeles",
+              "zone": "America/Los_Angeles"
+            }
+          ],
+          "id": "omarchy.elsewhen"
+        },
+        {
+          "id": "omarchy.weather"
+        },
+        {
+          "id": "omarchy.system-update"
+        }
+      ],
+      "left": [
+        {
+          "id": "omarchy.menu"
+        },
+        {
+          "id": "kyle.workspaces"
+        }
+      ],
+      "right": [
+        {
+          "id": "omarchy.tray"
+        },
+        {
+          "id": "omarchy.keyboard-layout"
+        },
+        {
+          "id": "omarchy.agents"
+        },
+        {
+          "id": "modib.activity-monitor",
+          "mode": "compact"
+        },
+        {
+          "id": "omarchy.bluetooth"
+        },
+        {
+          "id": "omarchy.network"
+        },
+        {
+          "id": "omarchy.audio"
+        },
+        {
+          "id": "omarchy.monitor"
+        },
+        {
+          "id": "omarchy.power"
+        }
+      ],
+      "tray": []
+    },
+    "position": "top",
+    "transparent": true
+  },
+  "cloneSourceRestores": [
+    "kyle.dock"
+  ],
+  "disabledPlugins": [
+    "omarchy.dock"
+  ],
+  "dock": {
+    "pinned": [
+      "brave-browser",
+      "org.gnome.Nautilus",
+      "steam",
+      "vesktop",
+      "spotify",
+      "com.obsproject.Studio",
+      "com.anthropic.Claude"
+    ]
+  },
+  "idle": {
+    "lock": 2000000,
+    "screensaver": 14400
+  },
+  "plugins": [
+    {
+      "id": "kyle.background"
+    },
+    {
+      "id": "kyle.dock"
+    }
+  ],
+  "version": 1
+}

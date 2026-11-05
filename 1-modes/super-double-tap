@@ -1,0 +1,37 @@
+#!/bin/bash
+# Runs on every lone tap of Super (bound on release in ~/.config/hypr/bindings.lua).
+#
+#   One tap:  on Home (slot 1 of a monitor, where the dock shows) opens the
+#             dock's apps grid. If the grid is already open, closes it,
+#             wherever you are. Anywhere else a single tap does nothing.
+#   Two taps within WINDOW_MS: go to Home mode. If the first tap opened the
+#             grid, it's closed again first, so a double tap never leaves it up.
+#
+# The grid lives in the dock plugin (kyle.dock), reached through the
+# omarchy.dock IPC target it answers on.
+
+WINDOW_MS=400
+stamp="${XDG_RUNTIME_DIR:-/tmp}/super-double-tap"
+
+now=$(date +%s%3N)
+read -r last opened_grid <"$stamp" 2>/dev/null
+last=${last:-0}
+
+if ((now - last <= WINDOW_MS)); then
+  rm -f "$stamp"
+  [[ $opened_grid == 1 ]] && omarchy-shell -q omarchy.dock closeApps
+  exec "$HOME/.local/bin/workspace-mode" home
+fi
+
+opened_grid=0
+if [[ $(omarchy-shell omarchy.dock appsOpen 2>/dev/null) == true ]]; then
+  omarchy-shell -q omarchy.dock closeApps
+else
+  ws=$(hyprctl activeworkspace -j | jq -r '.id')
+  if [[ $ws =~ ^[0-9]+$ ]] && (( (ws - 1) % 10 == 0 )); then
+    omarchy-shell -q omarchy.dock openApps
+    opened_grid=1
+  fi
+fi
+
+echo "$now $opened_grid" >"$stamp"

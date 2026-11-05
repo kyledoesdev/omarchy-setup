@@ -1,0 +1,23 @@
+#!/bin/bash
+# Focus the main monitor so menus open there.
+# Prefers DP-1 (middle); falls back to HDMI-A-1 (right) when DP-1 is off,
+# disabled, or unplugged. Any arguments are run afterwards as a command,
+# e.g. `focus-main-monitor omarchy-menu toggle`.
+
+PREFERRED=(DP-1 HDMI-A-1)
+
+monitors=$(hyprctl monitors -j)
+
+for name in "${PREFERRED[@]}"; do
+  if jq -e --arg n "$name" '.[] | select(.name == $n and .disabled == false and .dpmsStatus == true)' <<<"$monitors" >/dev/null; then
+    focused=$(jq -r '.[] | select(.focused) | .name' <<<"$monitors")
+    if [[ $focused != "$name" ]]; then
+      hyprctl dispatch "hl.dsp.focus({ monitor = \"$name\" })" >/dev/null
+    fi
+    break
+  fi
+done
+
+if (($#)); then
+  exec "$@"
+fi

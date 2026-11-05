@@ -1,0 +1,8 @@
+[Unit]
+Description=Restart the Life OS local dev server so it picks up .env changes
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+ExecStartPre=/usr/bin/sleep 1
+ExecStart=/usr/bin/systemctl --user restart lifeos-serve.service

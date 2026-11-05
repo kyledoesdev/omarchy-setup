@@ -1,0 +1,28 @@
+#!/bin/bash
+# SUPER+M: minimize the active window to the dock.
+#
+# Omarchy's own minimize only works on floating workspaces, because stock
+# Omarchy only shows the dock there. My dock (kyle.dock) shows on Home instead:
+# slot 1 on every monitor (workspaces 1, 11 and 21), which stays tiled. So on
+# Home this minimizes the same way Omarchy does, and anywhere else it hands
+# off to Omarchy's command, which does nothing on a tiled workspace with no
+# dock to bring the window back from.
+
+read -r ADDRESS WORKSPACE < <(hyprctl activewindow -j | jq -r '"\(.address // "") \(.workspace.id // "")"')
+[[ -n $ADDRESS && $WORKSPACE =~ ^[0-9]+$ ]] || exit 1
+
+if (( (WORKSPACE - 1) % 10 != 0 )); then
+  exec omarchy-hyprland-window-minimize "$ADDRESS"
+fi
+
+# Same steps as omarchy-hyprland-window-minimize: tag where it came from (one
+# tag only), park it on the hidden workspace the dock reads, and keep focus on
+# this workspace so the next window doesn't open on the hidden one.
+while read -r tag; do
+  [[ $tag =~ ^omarchy-minimized-from-[0-9]+$ && $tag != "omarchy-minimized-from-$WORKSPACE" ]] || continue
+  hyprctl dispatch "hl.dsp.window.tag({ tag = \"-$tag\", window = \"address:$ADDRESS\" })" >/dev/null
+done < <(hyprctl clients -j | jq -r --arg a "$ADDRESS" '.[] | select(.address == $a) | (.tags // [])[]')
+
+hyprctl dispatch "hl.dsp.window.tag({ tag = \"+omarchy-minimized-from-$WORKSPACE\", window = \"address:$ADDRESS\" })" >/dev/null
+hyprctl dispatch "hl.dsp.window.move({ workspace = \"special:minimized\", follow = false, window = \"address:$ADDRESS\" })" >/dev/null
+hyprctl dispatch "hl.dsp.focus({ workspace = \"$WORKSPACE\" })" >/dev/null

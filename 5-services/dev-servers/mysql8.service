@@ -1,0 +1,12 @@
+[Unit]
+Description=MySQL 8.0 local dev server (127.0.0.1:3306)
+
+[Service]
+ExecStart=%h/.local/opt/mysql-8.0.46/bin/mysqld --defaults-file=%h/.config/mysql8/my.cnf
+Restart=on-failure
+RestartSec=3
+LimitNOFILE=10000
+TimeoutStopSec=120
+
+[Install]
+WantedBy=default.target

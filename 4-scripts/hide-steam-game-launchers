@@ -1,0 +1,11 @@
+#!/bin/bash
+# Hide Steam game shortcuts from the Omarchy app menu by adding NoDisplay=true.
+# Triggered by hide-steam-launchers.path whenever ~/.local/share/applications changes.
+sleep 2
+for f in "$HOME"/.local/share/applications/*.desktop; do
+  [[ -f $f ]] || continue
+  grep -q 'steam://rungameid' "$f" || continue
+  grep -q '^NoDisplay=true' "$f" && continue
+  sed -i '0,/^\[Desktop Entry\]$/s//[Desktop Entry]\nNoDisplay=true/' "$f"
+  echo "hid: $(basename "$f" .desktop)"
+done

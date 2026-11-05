@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "kyle.background",
+  "name": "Monitor Wallpapers",
+  "version": "2.1.0",
+  "author": "Kyle",
+  "description": "Fixed wallpaper or looping video per monitor, drawn above the Omarchy background",
+  "kinds": [
+    "service"
+  ],
+  "entryPoints": {
+    "service": "Background.qml"
+  }
+}

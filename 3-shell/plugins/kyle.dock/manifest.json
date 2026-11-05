@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "kyle.dock",
+  "name": "Dock",
+  "version": "1.2.1",
+  "author": "Kyle",
+  "description": "App dock on the Home mode's workspaces, with its own space at the bottom of the screen",
+  "kinds": [
+    "service",
+    "menu"
+  ],
+  "entryPoints": {
+    "service": "Dock.qml",
+    "menu": "AppLibraryAccess.qml"
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.dock"
+  }
+}

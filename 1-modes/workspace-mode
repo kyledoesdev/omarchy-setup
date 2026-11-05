@@ -1,0 +1,391 @@
+#!/bin/bash
+# Switch all three monitors to a workspace "mode" and make sure its apps are
+# open and in place. A window that's already somewhere inside this mode is
+# left exactly where it is -- drag Brave to another monitor and it stays
+# there. Windows are only moved when they're outside the mode entirely, or
+# freshly launched.
+#
+# Usage: workspace-mode <home|dev|streaming|contract> [--reset]
+#
+# Monitors: left = DP-2, middle = DP-1, right = HDMI-A-1
+#
+# Omarchy 4.5 gives every monitor its own block of ten workspaces (Super+N is
+# slot N on the focused monitor) and renumbers any workspace sitting on a
+# monitor that doesn't own it. So a mode is one slot on all three monitors:
+# workspace id = <monitor's block> * 10 + <slot>. The blocks come from
+# Omarchy's own state file, keyed by monitor serial, so they stay put:
+# right (HDMI-A-1) 1-10, middle (DP-1) 11-20, left (DP-2) 21-30.
+#
+#   slot  key       mode       left | middle | right
+#   1     SUPER+1   home       Spotify + Discord | (free) | (free)   games come back here too
+#   2     SUPER+2   dev        Workbench + Claude | VS Code | Brave (Personal) + GitKraken
+#   3     SUPER+3   streaming  Spotify + Discord | (open: HD60 S+ viewer) | Twitch chat | OBS | Activity feed
+#   10    SUPER+0   contract   Brave (work profile) | (empty) | Slack
+#
+# The screen switch happens BEFORE the lock is taken, so pressing a mode key
+# always moves you even while an earlier run is still arranging windows.
+
+set -uo pipefail
+
+declare -A MONITOR=([L]=DP-2 [M]=DP-1 [R]=HDMI-A-1)
+
+# app key -> window class regex (case-insensitive)
+declare -A CLASS=(
+  [claude]='^com\.anthropic\.claude$'
+  [gitkraken]='^gitkraken$'
+  [vscode]='^(code|com\.microsoft\.vscode)$'
+  [workbench]='^mysql-workbench-bin$'
+  [spotify]='^spotify$'
+  [discord]='^vesktop$'
+  [brave]='^brave-browser$'
+  [brave_work]='^brave-browser$'
+  [steam]='^steam$'
+  [slack]='^slack$'
+  [obs]='^(com\.obsproject\.Studio|obs)$'   # "obs" if OBS is ever run under XWayland
+  # Brave --app windows get their own class from the URL, so they never get
+  # mixed up with normal Brave windows.
+  [twitch_chat]='^brave-dashboard\.twitch\.tv__popout_u_spacelampsix_stream-manager_chat-Default$'
+  [twitch_feed]='^brave-dashboard\.twitch\.tv__popout_u_spacelampsix_stream-manager_activity-feed-Default$'
+  # OBS's windowed projector of the HD60 S+ (OBS reopens it on launch: "Save projectors on exit")
+  [capture_projector]='^(com\.obsproject\.Studio|obs)$'
+)
+# app key -> optional title regex (to pick the main window)
+declare -A TITLE=(
+  [steam]='^Steam$'
+  [obs]='^OBS [0-9]'                                         # main window, not its projectors
+  [capture_projector]='^Projector - Source: Capture Card$'
+)
+# app key -> launch command
+# Brave needs an explicit --profile-directory: bare `brave --new-window` hands
+# off to the running instance, which just raises its existing window (and drags
+# your focus to whatever workspace that window is on) instead of opening a new
+# one. Naming the profile makes it reliably open a fresh New Tab window.
+#   Default   = "Personal"      Profile 1 = the work profile
+declare -A LAUNCH=(
+  [claude]='uwsm-app -- claude-desktop'
+  [gitkraken]='uwsm-app -- gitkraken'
+  [vscode]='uwsm-app -- code --new-window'
+  [workbench]='uwsm-app -- mysql-workbench'
+  [spotify]='uwsm-app -- spotify'
+  [discord]='uwsm-app -- vesktop'
+  [brave]='uwsm-app -- brave --new-window --profile-directory=Default'
+  [brave_work]="uwsm-app -- brave --new-window --profile-directory='Profile 1'"
+  [steam]='uwsm-app -- steam'
+  [slack]='uwsm-app -- slack --gtk-version=3 --ozone-platform-hint=auto --enable-features=WaylandWindowDecorations,WebRTCPipeWireCapturer'
+  [obs]='uwsm-app -- flatpak run com.obsproject.Studio'
+  [twitch_chat]='uwsm-app -- brave --profile-directory=Default --app=https://dashboard.twitch.tv/popout/u/spacelampsix/stream-manager/chat?uuid=10d38a8595763182a8fb1ffb438d85f9'
+  [twitch_feed]='uwsm-app -- brave --profile-directory=Default --app=https://dashboard.twitch.tv/popout/u/spacelampsix/stream-manager/activity-feed?uuid=fa9acb6a91770025f4b3660a6d4b7648'
+)
+# Search scope for Brave windows. Each Brave profile/instance can only open new
+# windows (same class), so we restrict the search to specific workspaces to
+# prevent modes from stealing each other's browser windows.
+#
+# Dev keeps its own Brave Personal window, so it never pulls the one you're
+# using on Home. Contract Work uses brave_work (different profile). Streaming
+# uses Brave --app windows, which have their own classes.
+#
+# Returns: space-separated workspace list (restricts search), or "" (search all).
+scope_for() {
+  local app=$1
+  case $app in
+    brave) echo "$MODE_WS" ;;
+    brave_work) echo "$MODE_WS" ;;
+    *) echo "" ;;
+  esac
+}
+
+# Home is where games live. Switching to Home brings these back from whatever
+# mode they were opened in, onto the same monitor's Home workspace: Steam and
+# its games (steam_app_<id>), the Minecraft launcher and game, and Stardew.
+GAME_CLASSES='^(steam|steam_app_[0-9]+|minecraft-launcher|minecraft.*|stardew.*)$'
+
+# How long to wait for a freshly launched app to show a window.
+LAUNCH_WAIT=40 # half-seconds
+
+# Parse arguments: workspace-mode <mode> [--reset]
+RESET=""
+MODE_NAME=""
+for arg in "$@"; do
+  case $arg in
+    --reset) RESET=1 ;;
+    *) MODE_NAME=$arg ;;
+  esac
+done
+
+# Slots: "<screen>|<app>|<place>"; for split screens list left first.
+#   full / left / right       tiled (left+right on one screen split 50/50)
+#   left:N / right:N / fill   floating panels: N px wide pinned to that edge,
+#                             "fill" takes the space between them
+case "${MODE_NAME:-}" in
+  home | normal) SLOT=1; SLOTS=("L|spotify|left" "L|discord|right") ;;
+  dev) SLOT=2; SLOTS=("L|workbench|left" "L|claude|right" "M|vscode|full" "R|brave|left" "R|gitkraken|right") ;;
+  streaming) SLOT=3; SLOTS=("L|spotify|left" "L|discord|right" "R|twitch_chat|left:380" "R|obs|fill" "R|twitch_feed|right:280") ;;
+  contract) SLOT=10; SLOTS=("L|brave_work|full" "R|slack|full") ;;
+  *) echo "Usage: workspace-mode <home|dev|streaming|contract>" >&2; exit 1 ;;
+esac
+
+dispatch() { hyprctl dispatch "$1" >/dev/null; }
+
+# Each monitor's block of ten, from Omarchy's state file ("block<TAB>connector
+# <TAB>identity" per line). Falls back to the blocks Omarchy gave these
+# monitors on 2026-11-05 if the file can't be read.
+declare -A BLOCK=([HDMI-A-1]=0 [DP-1]=1 [DP-2]=2)
+while IFS=$'\t' read -r block connector _; do
+  [[ $block =~ ^[0-9]+$ && -n $connector ]] && BLOCK[$connector]=$block
+done <"${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/monitor-workspaces" 2>/dev/null
+
+workspace_for() {
+  echo $((BLOCK[${MONITOR[$1]}] * 10 + SLOT))
+}
+
+# A slot's workspaces on all three monitors, left to right.
+slot_workspaces() {
+  local s
+  for s in L M R; do printf '%s ' $((BLOCK[${MONITOR[$s]}] * 10 + $1)); done
+}
+
+# Every workspace this mode owns, for the per-mode window search.
+MODE_WS=$(slot_workspaces "$SLOT")
+MODE_WS=${MODE_WS% }
+
+# Panel places (left:N, right:N, fill) are floated to exact pixel geometry.
+is_panel() { [[ $1 =~ ^(left|right):[0-9]+$ || $1 == fill ]]; }
+
+# Print "x y w h" for a panel place on a screen. "fill" spans between the
+# left:N / right:N panels that share its screen.
+panel_geometry() {
+  local screen=$1 place=$2 gap=10 left_w=0 right_w=0 other s a p
+  for other in "${SLOTS[@]}"; do
+    IFS='|' read -r s a p <<<"$other"
+    [[ $s != "$screen" ]] && continue
+    [[ $p =~ ^left:([0-9]+)$ ]] && left_w=${BASH_REMATCH[1]}
+    [[ $p =~ ^right:([0-9]+)$ ]] && right_w=${BASH_REMATCH[1]}
+  done
+  # reserved is [left, top, right, bottom]: the bar on top, the dock below.
+  read -r mx my mw mh rtop rbottom < <(hyprctl monitors -j | jq -r --arg m "${MONITOR[$screen]}" '.[] | select(.name == $m) | "\(.x) \(.y) \(.width) \(.height) \(.reserved[1]) \(.reserved[3])"')
+  # Only Home shows the dock; elsewhere a stale reading from mid-switch is ignored.
+  [[ $SLOT == 1 ]] || rbottom=0
+  local y=$((my + rtop + gap)) h=$((mh - rtop - rbottom - gap * 2))
+  case $place in
+    left:*) echo "$((mx + gap)) $y $left_w $h" ;;
+    right:*) echo "$((mx + mw - gap - right_w)) $y $right_w $h" ;;
+    fill)
+      local x=$((mx + gap)) w=$((mw - gap * 2))
+      ((left_w)) && x=$((x + left_w + gap)) w=$((w - left_w - gap))
+      ((right_w)) && w=$((w - right_w - gap))
+      echo "$x $y $w $h"
+      ;;
+  esac
+}
+
+# Switch every monitor; middle last so focus ends on the main screen.
+# Deliberately outside the lock -- this must never be blocked.
+for screen in L R M; do
+  dispatch "hl.dsp.focus({ workspace = \"$(workspace_for $screen)\" })"
+done
+
+if [[ ${#SLOTS[@]} -eq 0 ]]; then
+  # Blank mode (home): nothing to arrange.
+  dispatch "hl.dsp.focus({ monitor = \"${MONITOR[M]}\" })"
+  exit 0
+fi
+
+# Only the window-arranging half is serialised. If another run is mid-arrange,
+# drop out quietly -- the screens have already switched above.
+exec 9>"${XDG_RUNTIME_DIR:-/tmp}/workspace-mode.lock"
+flock -n 9 || exit 0
+
+if [[ $SLOT == 1 ]]; then
+  hyprctl clients -j | jq -r --arg c "$GAME_CLASSES" '
+    .[] | select(.class | test($c; "i"))
+        | select(.workspace.id >= 1 and ((.workspace.id - 1) % 10) != 0)
+        | "\(.address) \(.workspace.id)"' |
+    while read -r addr ws; do
+      dispatch "hl.dsp.window.move({ workspace = \"$(( (ws - 1) / 10 * 10 + 1 ))\", follow = false, window = \"address:$addr\" })"
+    done
+fi
+
+# Print "address workspace_id" of matching windows. $2, when given, is a
+# space-separated list of workspace ids to limit the search to.
+find_windows() {
+  local app=$1 only_ws=${2:-}
+  hyprctl clients -j | jq -r --arg c "${CLASS[$app]}" --arg t "${TITLE[$app]:-}" --arg ws "$only_ws" '
+    ($ws | split(" ") | map(select(length > 0))) as $wslist |
+    .[] | select(.class | test($c; "i"))
+        | select($t == "" or (.title | test($t)))
+        | select(($wslist | length) == 0 or ((.workspace.id | tostring) as $id | $wslist | index($id)) != null)
+        | "\(.address) \(.workspace.id)"'
+}
+
+declare -A ADDR=() CHANGED=() LAUNCHED=() BEFORE=() DISPLACED=()
+for slot in "${SLOTS[@]}"; do
+  IFS='|' read -r screen app place <<<"$slot"
+  ws=$(workspace_for "$screen")
+
+  scope=$(scope_for "$app")
+  if [[ -n $scope ]]; then
+    matches=$(find_windows "$app" "$scope")
+  else
+    matches=$(find_windows "$app")
+  fi
+  # Prefer the window already in its slot, then any other one in this mode,
+  # then whatever's left (a shared app sitting in some other mode).
+  existing=$(awk -v ws="$ws" '$2 == ws' <<<"$matches" | head -1)
+  if [[ -z $existing ]]; then
+    existing=$(awk -v m=" $MODE_WS " 'index(m, " " $2 " ")' <<<"$matches" | head -1)
+  fi
+  [[ -z $existing ]] && existing=$(head -1 <<<"$matches")
+
+  if [[ -n $existing ]]; then
+    addr=${existing% *}
+    found_ws=${existing#* }
+    if [[ $found_ws == "$ws" ]]; then
+      if [[ -n $RESET ]]; then
+        CHANGED[$slot]=1
+      else
+        # If the window's float/fullscreen state doesn't match what layout
+        # would set, mark it for re-layout so it gets corrected.
+        _partner=""
+        for _o in "${SLOTS[@]}"; do
+          [[ $_o == "$slot" ]] && continue
+          [[ ${_o%%|*} == "$screen" ]] && { _partner=$_o; break; }
+        done
+        read -r _is_float _fs < <(hyprctl clients -j | jq -r --arg a "$addr" \
+          '.[] | select(.address == $a) | "\(.floating) \(.fullscreen)"')
+        if is_panel "$place"; then
+          [[ $_is_float != true || ${_fs:-0} != 0 ]] && CHANGED[$slot]=1
+        elif [[ $place == full || -n $_partner ]]; then
+          [[ $_is_float == true || ${_fs:-0} != 0 ]] && CHANGED[$slot]=1
+        else
+          [[ $_is_float != true || ${_fs:-0} != 0 ]] && CHANGED[$slot]=1
+        fi
+      fi
+    elif [[ " $MODE_WS " == *" $found_ws "* ]]; then
+      if [[ -n $RESET ]]; then
+        dispatch "hl.dsp.window.move({ workspace = \"$ws\", follow = false, window = \"address:$addr\" })"
+        CHANGED[$slot]=1
+      else
+        DISPLACED[$slot]=1
+      fi
+    else
+      # Outside this mode entirely (a shared app following you in). Bring it.
+      dispatch "hl.dsp.window.move({ workspace = \"$ws\", follow = false, window = \"address:$addr\" })"
+      CHANGED[$slot]=1
+    fi
+  else
+    BEFORE[$slot]=$(find_windows "$app" | cut -d' ' -f1 | sort)
+    if [[ -n ${LAUNCH[$app]:-} ]]; then
+      dispatch "hl.dsp.exec_cmd(\"${LAUNCH[$app]}\")"
+    elif [[ ${#LAUNCHED[@]} -eq 0 ]]; then
+      # Opened by another app (OBS's projector) that isn't starting right now
+      continue
+    fi
+    addr=""
+    for _ in $(seq 1 $LAUNCH_WAIT); do
+      sleep 0.5
+      addr=$(comm -13 <(echo "${BEFORE[$slot]}") <(find_windows "$app" | cut -d' ' -f1 | sort) | head -1)
+      [[ -n $addr ]] && break
+    done
+    if [[ -z $addr ]]; then
+      [[ -n ${LAUNCH[$app]:-} ]] && notify-send "Workspace mode" "Couldn't find a window for $app" 2>/dev/null
+      continue
+    fi
+    sleep 0.5
+    dispatch "hl.dsp.window.move({ workspace = \"$ws\", follow = false, window = \"address:$addr\" })"
+    CHANGED[$slot]=1
+    LAUNCHED[$slot]=1
+  fi
+  ADDR[$slot]=$addr
+done
+# Some apps (GitKraken, Workbench) show a splash window first and open the
+# real one a moment later. Give freshly launched apps time to settle, then
+# catch any main window that appeared somewhere else.
+if [[ ${#LAUNCHED[@]} -gt 0 ]]; then
+  sleep 3
+  for slot in "${!LAUNCHED[@]}"; do
+    IFS='|' read -r screen app place <<<"$slot"
+    ws=$(workspace_for "$screen")
+    fresh=$(find_windows "$app" | while read -r a w; do
+      grep -qx "$a" <<<"${BEFORE[$slot]}" || echo "$a $w"
+    done)
+    [[ -z $fresh ]] && continue
+    # Prefer a new window that isn't in place yet, otherwise the one that is
+    stray=$(awk -v ws="$ws" '$2 != ws' <<<"$fresh" | tail -1)
+    if [[ -n $stray ]]; then
+      addr=${stray% *}
+      dispatch "hl.dsp.window.move({ workspace = \"$ws\", follow = false, window = \"address:$addr\" })"
+    else
+      addr=$(tail -1 <<<"$fresh" | cut -d' ' -f1)
+    fi
+    ADDR[$slot]=$addr
+  done
+fi
+
+# Lay out any window that was just opened or moved in.
+for slot in "${SLOTS[@]}"; do
+  [[ -z ${CHANGED[$slot]:-} || -z ${ADDR[$slot]:-} ]] && continue
+  IFS='|' read -r screen app place <<<"$slot"
+  addr=${ADDR[$slot]}
+
+  # Does this screen have a partner window in the same mode?
+  partner=""
+  for other in "${SLOTS[@]}"; do
+    [[ $other == "$slot" ]] && continue
+    [[ ${other%%|*} == "$screen" ]] && partner=$other
+  done
+
+  read -r is_floating fullscreen < <(hyprctl clients -j | jq -r --arg a "$addr" '.[] | select(.address == $a) | "\(.floating) \(.fullscreen)"')
+
+  # Full screen / maximized windows ignore size and position, so clear that first
+  if [[ $fullscreen != 0 ]]; then
+    dispatch "hl.dsp.window.fullscreen_state({ internal = 0, client = 0, window = \"address:$addr\" })"
+    sleep 0.2
+  fi
+
+  if is_panel "$place"; then
+    # Fixed-width panel (or the space between panels): float to exact geometry
+    read -r x y w h < <(panel_geometry "$screen" "$place")
+    [[ $is_floating != true ]] && dispatch "hl.dsp.window.float({ action = \"set\", window = \"address:$addr\" })"
+    dispatch "hl.dsp.window.resize({ x = $w, y = $h, window = \"address:$addr\" })"
+    dispatch "hl.dsp.window.move({ x = $x, y = $y, window = \"address:$addr\" })"
+  elif [[ $place == full || -n $partner ]]; then
+    # Tiled: fills the screen alone, or splits left/right with its partner
+    [[ $is_floating == true ]] && dispatch "hl.dsp.window.float({ action = \"unset\", window = \"address:$addr\" })"
+  else
+    # Half-screen on its own: float it into that half
+    read -r mx my mw mh rtop rbottom < <(hyprctl monitors -j | jq -r --arg m "${MONITOR[$screen]}" '.[] | select(.name == $m) | "\(.x) \(.y) \(.width) \(.height) \(.reserved[1]) \(.reserved[3])"')
+    [[ $SLOT == 1 ]] || rbottom=0
+    gap=10
+    half=$(((mw - gap * 3) / 2))
+    height=$((mh - rtop - rbottom - gap * 2))
+    x=$((mx + gap))
+    [[ $place == right ]] && x=$((mx + gap * 2 + half))
+    y=$((my + rtop + gap))
+    [[ $is_floating != true ]] && dispatch "hl.dsp.window.float({ action = \"set\", window = \"address:$addr\" })"
+    dispatch "hl.dsp.window.resize({ x = $half, y = $height, window = \"address:$addr\" })"
+    dispatch "hl.dsp.window.move({ x = $x, y = $y, window = \"address:$addr\" })"
+  fi
+done
+
+# Put tiled split pairs in the right order (left slot on the left).
+# Only applies to left/right (tiled 50/50) pairs -- quarter/three-quarter
+# windows are floated to exact pixel positions and don't need reordering.
+for slot in "${SLOTS[@]}"; do
+  IFS='|' read -r screen app place <<<"$slot"
+  [[ $place != left ]] && continue
+  [[ -z ${ADDR[$slot]:-} || -n ${DISPLACED[$slot]:-} ]] && continue
+  for other in "${SLOTS[@]}"; do
+    IFS='|' read -r oscreen oapp oplace <<<"$other"
+    [[ $oscreen != "$screen" || $oplace != right ]] && continue
+    [[ -z ${ADDR[$other]:-} ]] && continue
+    [[ -n ${DISPLACED[$other]:-} ]] && continue
+    lx=$(hyprctl clients -j | jq -r --arg a "${ADDR[$slot]}" '.[] | select(.address == $a) | .at[0]')
+    rx=$(hyprctl clients -j | jq -r --arg a "${ADDR[$other]}" '.[] | select(.address == $a) | .at[0]')
+    if [[ -n $lx && -n $rx ]] && ((lx > rx)); then
+      dispatch "hl.dsp.window.move({ direction = \"l\", window = \"address:${ADDR[$slot]}\" })"
+    fi
+  done
+done
+
+# End with focus on the middle screen
+dispatch "hl.dsp.focus({ monitor = \"${MONITOR[M]}\" })"

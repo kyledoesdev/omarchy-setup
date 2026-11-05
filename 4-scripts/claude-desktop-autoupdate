@@ -1,0 +1,249 @@
+#!/bin/bash
+# Keep Claude Desktop up to date without interrupting work. Run every 15
+# minutes by claude-desktop-autoupdate.timer.
+#
+#   - Every 6 hours, install a newer claude-desktop from the Omarchy repo if
+#     there is one, through the root helper /usr/local/sbin/claude-desktop-update
+#     (sudoers lets this script run it without a password).
+#   - When the running Claude is an older build than the one on disk, restart
+#     it, but only while the screen is locked and no Claude session is working.
+#     Otherwise post a notification with a "Restart now" button.
+#   - After a restart, set mode 2 (dev) back up with workspace-mode dev, then
+#     return each monitor to the workspace it was showing.
+#   - Warn if Claude is ever running without --password-store, which is what
+#     makes it forget the login on the next restart.
+#
+# Usage: claude-desktop-autoupdate [--status | --check-now | --restart-now]
+# Log:   journalctl --user -u claude-desktop-autoupdate
+
+set -uo pipefail
+
+PATH=$HOME/.local/bin:/usr/share/omarchy/bin:$PATH
+SELF=$(realpath "$0")
+CHECK_EVERY=$((6 * 60 * 60))
+HELPER=/usr/local/sbin/claude-desktop-update
+LOGS=$HOME/.config/Claude/logs
+STATE=${XDG_STATE_HOME:-$HOME/.local/state}/claude-desktop-autoupdate
+mkdir -p "$STATE"
+
+notify() { notify-send -a "Claude Desktop" -i claude-desktop "$@"; }
+
+# Notify only when <value> changes for <key>, so a 15-minute timer doesn't nag.
+# Usage: notify_once <key> <value> <notify-send args...>
+notify_once() {
+  local key=$1 value=$2
+  shift 2
+  [[ $(cat "$STATE/notified-$key" 2>/dev/null) == "$value" ]] && return
+  echo "$value" >"$STATE/notified-$key"
+  notify "$@"
+}
+
+# Chromium rewrites its process title into one space-separated string, so
+# match flags as " --flag" rather than splitting on NULs.
+cmdline() { echo " $(tr '\0' ' ' <"/proc/$1/cmdline" 2>/dev/null) "; }
+
+# PID of Claude's main process (not its renderer/GPU/helper children).
+claude_pid() {
+  local pid
+  for pid in $(pgrep -f '^/usr/lib/claude-desktop/claude-desktop'); do
+    [[ $(cmdline "$pid") == *" --type="* ]] || {
+      echo "$pid"
+      return
+    }
+  done
+}
+
+has_keyring_flag() { [[ $(cmdline "$1") == *" --password-store="* ]]; }
+
+# pacman swaps in a new binary rather than overwriting the old one, so a
+# Claude started before the upgrade still runs the old file and its exe link
+# reads "... (deleted)".
+running_old_build() { [[ $(readlink "/proc/$1/exe") == *" (deleted)" ]]; }
+
+# Claude's main log lines from <since> ("YYYY-MM-DD HH:MM:SS") onwards.
+log_since() {
+  cat "$LOGS/main1.log" "$LOGS/main.log" 2>/dev/null |
+    awk -v s="$1" '$1 ~ /^20[0-9][0-9]-/ && $1 " " $2 >= s'
+}
+
+# Claude logs "[keep-awake] code session hold taken" when a session starts a
+# turn and "... released" when every session is idle again. It's busy if the
+# latest of those since it started is "taken". (The "[keep-awake] started" and
+# "stopped" lines aren't per turn; a claim can stay open across idle gaps.)
+claude_busy() {
+  local since
+  since=$(date -d "$(ps -o lstart= -p "$1")" '+%F %T') || return 1
+  log_since "$since" | grep -E '\[keep-awake\] code session hold (taken|released)' | tail -1 | grep -q 'taken'
+}
+
+update_due() {
+  local last
+  last=$(cat "$STATE/last-check" 2>/dev/null || echo 0)
+  (($(date +%s) - last >= CHECK_EVERY))
+}
+
+installed_version() { pacman -Q claude-desktop | cut -d' ' -f2; }
+
+check_for_update() {
+  local result
+  # Stay out of the way while `omarchy update` holds its lock.
+  result=$(
+    exec 8>"${XDG_RUNTIME_DIR:-/tmp}/omarchy-update.lock"
+    flock -n 8 || { echo busy; exit; }
+    sudo -n "$HELPER" 2>&1
+  )
+  echo "update check: $result"
+
+  case $result in
+    current* | updated*)
+      date +%s >"$STATE/last-check"
+      ;;
+    busy) ;; # try again on the next run
+    offline*)
+      # Usually just the network; try again on the next run, but say so once
+      # if checks have been failing for a day.
+      last=$(cat "$STATE/last-check" 2>/dev/null || echo 0)
+      if (($(date +%s) - last >= 24 * 60 * 60)); then
+        notify_once offline "$result" "Claude Desktop update check keeps failing" \
+          "${result#offline }. Details: journalctl --user -u claude-desktop-autoupdate"
+      fi
+      ;;
+    blocked*)
+      date +%s >"$STATE/last-check"
+      notify_once blocked "$result" "Claude Desktop update needs a full system update" \
+        "${result#blocked }. Run omarchy update when you have a minute."
+      ;;
+    *"password is required"* | *"not allowed"* | *"command not found"*)
+      notify_once setup missing "Claude Desktop auto-update isn't set up yet" \
+        "The root helper or its sudoers rule isn't installed. See the header of ~/.local/share/claude-desktop-autoupdate/claude-desktop-update."
+      ;;
+    *)
+      notify_once error "$result" -u critical "Claude Desktop update failed" \
+        "Details: journalctl --user -u claude-desktop-autoupdate"
+      ;;
+  esac
+
+  if [[ $result == updated* && -z $(claude_pid) ]]; then
+    notify "Claude Desktop updated to $(installed_version)" "It'll open on the new version next time."
+  fi
+}
+
+# Quit Claude, start it again through workspace-mode (which launches it via the
+# claude-desktop wrapper, so the flags file applies) and check that the new
+# process came up with keyring access.
+restart_claude() {
+  local pid=$1 since shown new_pid ws
+  since=$(date '+%F %T')
+  echo "restarting Claude (pid $pid)"
+
+  kill -TERM "$pid"
+  # Give Claude time to save its sessions and shut down before forcing it.
+  for _ in $(seq 60); do
+    kill -0 "$pid" 2>/dev/null || break
+    sleep 0.5
+  done
+  if kill -0 "$pid" 2>/dev/null; then
+    echo "Claude didn't quit within 30s; killing it"
+    pkill -KILL -f '^/usr/lib/claude-desktop/'
+  fi
+  sleep 1
+
+  # Which workspace each monitor shows, focused monitor last, so you end up
+  # where you were rather than in mode 2.
+  shown=$(hyprctl monitors -j | jq -r 'sort_by(.focused) | .[].activeWorkspace.name')
+  workspace-mode dev
+  for ws in $shown; do
+    hyprctl dispatch "hl.dsp.focus({ workspace = \"$ws\" })" >/dev/null
+  done
+
+  new_pid=""
+  for _ in $(seq 60); do
+    new_pid=$(claude_pid)
+    [[ -n $new_pid ]] && break
+    sleep 0.5
+  done
+  if [[ -z $new_pid ]]; then
+    notify -u critical "Claude didn't come back after the update" "Open it with Super+2."
+    return
+  fi
+
+  # Give it time to try the keyring and log the result.
+  sleep 20
+  if ! has_keyring_flag "$new_pid" ||
+    log_since "$since" | grep -qE 'isEncryptionAvailable=false|tokens will not persist'; then
+    notify -u critical "Claude restarted without keyring access" \
+      "It will ask you to sign in again. Check ~/.config/claude-desktop-flags.conf."
+  else
+    notify "Claude Desktop restarted" "Now running $(installed_version)."
+  fi
+}
+
+# Offer a "Restart now" button. Runs in its own transient unit so the timer's
+# run can finish while the notification waits for a click.
+offer_restart() {
+  local version
+  version=$(installed_version)
+  [[ $(cat "$STATE/offered" 2>/dev/null) == "$version" ]] && return
+  echo "$version" >"$STATE/offered"
+  systemd-run --user --collect --quiet --unit=claude-desktop-restart-offer \
+    "$SELF" --offer "$version" 2>/dev/null || true
+}
+
+case ${1:-} in
+  --offer)
+    action=$(notify-send -a "Claude Desktop" -i claude-desktop -A restart="Restart now" \
+      "Claude Desktop $2 is installed" \
+      "Claude will switch to it the next time your screen is locked and no session is working.")
+    [[ $action == restart ]] && exec "$SELF" --restart-now
+    exit 0
+    ;;
+  --status)
+    pid=$(claude_pid)
+    echo "installed:      $(installed_version)"
+    echo "last check:     $(date -d "@$(cat "$STATE/last-check" 2>/dev/null || echo 0)" '+%F %T')"
+    echo "update due:     $(update_due && echo yes || echo no)"
+    echo "helper:         $([[ -x $HELPER ]] && echo installed || echo missing)"
+    echo "sudo rule:      $(sudo -n -l "$HELPER" >/dev/null 2>&1 && echo ok || echo missing)"
+    echo "screen locked:  $(omarchy-hyprland-session-locked && echo yes || echo no)"
+    if [[ -n $pid ]]; then
+      echo "claude pid:     $pid"
+      echo "keyring flag:   $(has_keyring_flag "$pid" && echo yes || echo NO)"
+      echo "old build:      $(running_old_build "$pid" && echo "yes (restart pending)" || echo no)"
+      echo "session busy:   $(claude_busy "$pid" && echo yes || echo no)"
+    else
+      echo "claude:         not running"
+    fi
+    exit 0
+    ;;
+  --check-now) rm -f "$STATE/last-check" ;;
+esac
+
+pid=$(claude_pid)
+if [[ -n $pid ]] && ! has_keyring_flag "$pid"; then
+  notify_once flag "$pid" -u critical "Claude is running without the keyring flag" \
+    "It will ask you to sign in again after the next restart. Quit Claude and reopen it with Super+2."
+fi
+
+update_due && check_for_update
+
+pid=$(claude_pid)
+[[ -n $pid ]] && running_old_build "$pid" || exit 0
+
+if [[ ${1:-} == --restart-now ]]; then
+  if claude_busy "$pid"; then
+    notify "Restarting Claude when it's done" "A session is still working; Claude will restart as soon as it finishes."
+    for _ in $(seq 90); do # up to 15 minutes
+      sleep 10
+      claude_busy "$pid" || break
+    done
+    if claude_busy "$pid"; then
+      notify "Claude is still working" "Skipped the restart; it'll happen the next time your screen is locked."
+      exit 0
+    fi
+  fi
+  restart_claude "$pid"
+elif omarchy-hyprland-session-locked && ! claude_busy "$pid"; then
+  restart_claude "$pid"
+else
+  offer_restart
+fi

@@ -1,0 +1,2 @@
+# Shell plugins installed from git. bin/install adds them with: omarchy plugin add <url>
+modib.activity-monitor	https://github.com/modib/omarchy-activity-monitor.git

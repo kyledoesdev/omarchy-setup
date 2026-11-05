@@ -1,0 +1,11 @@
+[Unit]
+Description=Share the HD60 S+ capture card as the virtual camera /dev/video10
+
+[Service]
+ExecStart=%h/.local/bin/hd60-split
+# Card unplugged or the loopback not loaded yet: keep retrying quietly.
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,12 @@
+[Unit]
+Description=SongRank local dev server (php artisan serve, proxied by Caddy at https://song-ranker.test)
+
+[Service]
+WorkingDirectory=%h/Projects/songrank.dev
+Environment=PHP_INI_SCAN_DIR=%h/.config/herd-lite/bin
+ExecStart=%h/.config/herd-lite/bin/php artisan serve --host=127.0.0.1 --port=8000 --no-reload
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

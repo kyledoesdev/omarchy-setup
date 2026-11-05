@@ -1,0 +1,12 @@
+[Unit]
+Description=Life OS local dev server (php artisan serve, proxied by Caddy at https://kyledoesdev.test)
+
+[Service]
+WorkingDirectory=%h/Projects/lifeos
+Environment=PHP_INI_SCAN_DIR=%h/.config/herd-lite/bin
+ExecStart=%h/.config/herd-lite/bin/php artisan serve --host=127.0.0.1 --port=8001 --no-reload
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

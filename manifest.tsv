@@ -1,0 +1,59 @@
+# What this repo tracks: <type> <tab> <path in this repo> <tab> <live path on the machine>
+# type is "file" or "dir". ~ is the home folder. bin/sync copies live to repo,
+# bin/install copies repo to live. bin/sync also adds new scripts in ~/.local/bin,
+# new shell plugins and new user services here on its own.
+
+file	1-modes/workspace-mode	~/.local/bin/workspace-mode
+file	1-modes/workspace-mode-key	~/.local/bin/workspace-mode-key
+file	1-modes/super-double-tap	~/.local/bin/super-double-tap
+file	1-modes/minimize-window	~/.local/bin/minimize-window
+
+file	2-hyprland/hyprland.lua	~/.config/hypr/hyprland.lua
+file	2-hyprland/bindings.lua	~/.config/hypr/bindings.lua
+file	2-hyprland/monitors.lua	~/.config/hypr/monitors.lua
+file	2-hyprland/input.lua	~/.config/hypr/input.lua
+file	2-hyprland/autostart.lua	~/.config/hypr/autostart.lua
+
+file	3-shell/shell.json	~/.config/omarchy/shell.json
+dir	3-shell/plugins/kyle.background	~/.config/omarchy/plugins/kyle.background
+dir	3-shell/plugins/kyle.dock	~/.config/omarchy/plugins/kyle.dock
+dir	3-shell/plugins/kyle.workspaces	~/.config/omarchy/plugins/kyle.workspaces
+dir	3-shell/plugins/kyle.clock	~/.config/omarchy/plugins/kyle.clock
+dir	3-shell/hooks	~/.config/omarchy/hooks
+dir	3-shell/branding	~/.config/omarchy/branding
+dir	3-shell/wallpapers	~/Pictures/Wallpapers
+
+file	4-scripts/focus-main-monitor	~/.local/bin/focus-main-monitor
+file	4-scripts/hd60-split	~/.local/bin/hd60-split
+file	4-scripts/hd60-view	~/.local/bin/hd60-view
+file	4-scripts/hide-steam-game-launchers	~/.local/bin/hide-steam-game-launchers
+file	4-scripts/claude-desktop-autoupdate	~/.local/bin/claude-desktop-autoupdate
+
+file	5-services/claude-desktop-autoupdate.service	~/.config/systemd/user/claude-desktop-autoupdate.service
+file	5-services/claude-desktop-autoupdate.timer	~/.config/systemd/user/claude-desktop-autoupdate.timer
+file	5-services/hd60-split.service	~/.config/systemd/user/hd60-split.service
+file	5-services/hide-steam-launchers.path	~/.config/systemd/user/hide-steam-launchers.path
+file	5-services/hide-steam-launchers.service	~/.config/systemd/user/hide-steam-launchers.service
+file	5-services/dev-servers/lifeos-serve.service	~/.config/systemd/user/lifeos-serve.service
+file	5-services/dev-servers/lifeos-serve-env.path	~/.config/systemd/user/lifeos-serve-env.path
+file	5-services/dev-servers/lifeos-serve-restart.service	~/.config/systemd/user/lifeos-serve-restart.service
+file	5-services/dev-servers/songrank-serve.service	~/.config/systemd/user/songrank-serve.service
+file	5-services/dev-servers/mysql8.service	~/.config/systemd/user/mysql8.service
+file	5-services/dev-servers/Caddyfile	/etc/caddy/Caddyfile
+
+file	6-launchers/brave-personal.desktop	~/.local/share/applications/brave-personal.desktop
+file	6-launchers/brave-work.desktop	~/.local/share/applications/brave-work.desktop
+file	6-launchers/hd60-viewer.desktop	~/.local/share/applications/hd60-viewer.desktop
+file	6-launchers/slack.desktop	~/.local/share/applications/slack.desktop
+file	6-launchers/vesktop.desktop	~/.local/share/applications/vesktop.desktop
+
+file	7-icons/org.gnome.Nautilus.svg	~/.local/share/icons/hicolor/scalable/apps/org.gnome.Nautilus.svg
+file	7-icons/com.obsproject.Studio.svg	~/.local/share/icons/hicolor/scalable/apps/com.obsproject.Studio.svg
+file	7-icons/steam.png	~/.local/share/icons/hicolor/256x256/apps/steam.png
+
+file	8-terminals/alacritty.toml	~/.config/alacritty/alacritty.toml
+file	8-terminals/foot.ini	~/.config/foot/foot.ini
+file	8-terminals/ghostty.config	~/.config/ghostty/config
+file	8-terminals/kitty.conf	~/.config/kitty/kitty.conf
+
+file	5-services/system/v4l2loopback-exclusive-caps.conf	/etc/modprobe.d/v4l2loopback-exclusive-caps.conf

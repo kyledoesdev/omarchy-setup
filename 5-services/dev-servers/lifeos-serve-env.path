@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch the Life OS .env file (php artisan serve --no-reload never re-reads it)
+
+[Path]
+PathChanged=%h/Projects/lifeos/.env
+Unit=lifeos-serve-restart.service
+
+[Install]
+WantedBy=default.target

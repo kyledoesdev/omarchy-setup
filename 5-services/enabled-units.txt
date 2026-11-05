@@ -1,0 +1,8 @@
+# Tracked user services that were enabled when this was synced.
+claude-desktop-autoupdate.timer
+hd60-split.service
+hide-steam-launchers.path
+lifeos-serve.service
+lifeos-serve-env.path
+songrank-serve.service
+mysql8.service

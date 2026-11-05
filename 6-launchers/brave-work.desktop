@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Brave (Work)
+GenericName=Web Browser
+Comment=New Brave window on the work profile
+Exec=/usr/bin/brave --new-window --profile-directory="Profile 1" %U
+Icon=brave-desktop
+Type=Application
+StartupNotify=true
+StartupWMClass=brave-browser
+Categories=Network;WebBrowser;

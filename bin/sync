@@ -1,0 +1,141 @@
+#!/bin/bash
+# Mirror this machine's custom Omarchy files into the repo, then commit and push.
+#
+# Usage: bin/sync [--quiet] [--no-push]
+#
+# The live files are the source of truth; this only ever copies live -> repo.
+# It runs on its own after every Claude Code turn (a Stop hook) and after every
+# Omarchy update (a post-update hook), and is safe to run by hand any time.
+#
+# Besides the entries in manifest.tsv, it picks up on its own:
+#   - new scripts in ~/.local/bin          -> 4-scripts/
+#   - new shell plugins                     -> 3-shell/plugins/
+#     (except ones installed from git, like modib.activity-monitor: those are
+#     listed in 3-shell/git-plugins.txt and reinstalled from their source)
+#   - new systemd user units                -> 5-services/
+# and adds them to manifest.tsv. Anything else new needs a manifest line.
+
+set -uo pipefail
+
+REPO=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
+MANIFEST="$REPO/manifest.tsv"
+LOG="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-setup-sync.log"
+QUIET=0
+PUSH=1
+for arg in "$@"; do
+  case $arg in
+    --quiet) QUIET=1 ;;
+    --no-push) PUSH=0 ;;
+    *) echo "Usage: bin/sync [--quiet] [--no-push]" >&2; exit 1 ;;
+  esac
+done
+
+say() { ((QUIET)) || echo "$@"; }
+log() { mkdir -p "$(dirname "$LOG")"; echo "$(date '+%F %T') $*" >>"$LOG"; }
+
+# One sync at a time: several Claude sessions can finish a turn together.
+exec 9>"${XDG_RUNTIME_DIR:-/tmp}/omarchy-setup-sync.lock"
+flock -w 30 9 || { log "skipped: another sync held the lock"; exit 0; }
+
+expand() { echo "${1/#\~/$HOME}"; }
+
+# Backups and samples never go in the repo.
+EXCLUDES=(--exclude='.git' --exclude='*.bak' --exclude='*.bak.*' --exclude='*.bak-*' --exclude='*.orig'
+  --exclude='*-before-*' --exclude='*.sample')
+is_backup() { [[ $1 =~ \.bak($|[.-])|\.orig$|-before-|\.sample$ ]]; }
+
+tracked() { awk -F'\t' -v p="$1" '!/^#/ && $3 == p { found = 1 } END { exit !found }' "$MANIFEST"; }
+add_entry() {
+  printf '%s\t%s\t%s\n' "$1" "$2" "$3" >>"$MANIFEST"
+  say "Now tracking $3"
+}
+
+# --- Pick up new things --------------------------------------------------------
+
+for path in "$HOME"/.local/bin/*; do
+  name=${path##*/}
+  [[ -f $path && ! -L $path ]] || continue
+  is_backup "$name" && continue
+  case $name in env | env.fish | uv | uvx) continue ;; esac
+  # Real programs (uv, downloaded binaries) aren't config.
+  (($(stat -c%s "$path") <= 524288)) || continue
+  [[ $(head -c4 "$path" | od -An -c | tr -d ' ') == '177ELF' ]] && continue
+  tracked "~/.local/bin/$name" || add_entry file "4-scripts/$name" "~/.local/bin/$name"
+done
+
+GIT_PLUGINS="$REPO/3-shell/git-plugins.txt"
+mkdir -p "$REPO/3-shell"
+echo "# Shell plugins installed from git. bin/install adds them with: omarchy plugin add <url>" >"$GIT_PLUGINS"
+for path in "$HOME"/.config/omarchy/plugins/*/; do
+  name=$(basename "$path")
+  if [[ -d $path/.git ]]; then
+    printf '%s\t%s\n' "$name" "$(git -C "$path" remote get-url origin 2>/dev/null)" >>"$GIT_PLUGINS"
+    continue
+  fi
+  tracked "~/.config/omarchy/plugins/$name" || add_entry dir "3-shell/plugins/$name" "~/.config/omarchy/plugins/$name"
+done
+
+for path in "$HOME"/.config/systemd/user/*.{service,timer,path,socket}; do
+  [[ -f $path && ! -L $path ]] || continue
+  name=${path##*/}
+  tracked "~/.config/systemd/user/$name" || add_entry file "5-services/$name" "~/.config/systemd/user/$name"
+done
+
+# --- Copy live -> repo --------------------------------------------------------
+
+while IFS=$'\t' read -r type repo_path live_path; do
+  [[ -z $type || $type == \#* ]] && continue
+  live=$(expand "$live_path")
+  dest="$REPO/$repo_path"
+
+  if [[ ! -e $live ]]; then
+    say "Gone from this machine (still in the repo): $live_path"
+    continue
+  fi
+
+  case $type in
+    file)
+      mkdir -p "$(dirname "$dest")"
+      cmp -s "$live" "$dest" 2>/dev/null || cp --preserve=mode "$live" "$dest"
+      ;;
+    dir)
+      mkdir -p "$dest"
+      rsync -a --delete --copy-links "${EXCLUDES[@]}" "$live/" "$dest/"
+      ;;
+  esac
+done <"$MANIFEST"
+
+# Which tracked services are switched on, so bin/install can switch them on too.
+{
+  echo "# Tracked user services that were enabled when this was synced."
+  awk -F'\t' '!/^#/ && $3 ~ /\.config\/systemd\/user\// { n = split($3, p, "/"); print p[n] }' "$MANIFEST" |
+    while read -r unit; do
+      [[ $(systemctl --user is-enabled "$unit" 2>/dev/null) == enabled ]] && echo "$unit"
+    done
+} >"$REPO/5-services/enabled-units.txt"
+
+# --- Commit and push ----------------------------------------------------------
+
+cd "$REPO" || exit 1
+git add -A
+if git diff --cached --quiet; then
+  say "Nothing changed."
+  exit 0
+fi
+
+changed=$(git diff --cached --name-only)
+count=$(wc -l <<<"$changed")
+summary=$(sed 's#.*/##' <<<"$changed" | head -4 | paste -sd ',' | sed 's/,/, /g')
+((count > 4)) && summary="$summary and $((count - 4)) more"
+git commit -q -m "Sync $summary" -m "From $(hostname) by bin/sync." -m "$(git diff --cached --name-status)"
+say "Committed: $summary"
+log "committed: $summary"
+
+if ((PUSH)); then
+  if git push -q 2>>"$LOG"; then
+    say "Pushed."
+  else
+    say "Push failed; the commit is saved and goes up with the next sync. See $LOG"
+    log "push failed"
+  fi
+fi

@@ -1,0 +1,13 @@
+[Unit]
+Description=Check Claude Desktop for updates and restart it when it's safe
+PartOf=graphical-session.target
+
+[Timer]
+# The script itself only goes to the repo every 6 hours; the 15-minute ticks
+# are for noticing a locked screen while a restart is pending.
+OnActiveSec=5min
+OnUnitActiveSec=15min
+AccuracySec=1min
+
+[Install]
+WantedBy=graphical-session.target

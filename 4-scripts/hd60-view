@@ -1,0 +1,59 @@
+#!/bin/bash
+# Clean, full-screen view of the Elgato HD60 S+ (no overlays), like Elgato's capture app.
+#
+# Normally it watches the virtual camera /dev/video11 that hd60-split
+# feeds, so it runs alongside OBS's Capture Card (which reads its own copy, /dev/video10).
+# Without the splitter it falls back to opening the card itself (only one app
+# can open the card directly).
+#
+# Audio: while OBS is running it already plays "Capture Card Audio" in your
+# headphones, so the viewer stays silent; otherwise it plays the card's audio.
+#
+#   hd60-view            full screen on the focused monitor (f = toggle, q = quit)
+#   hd60-view --window   in a normal window
+#   hd60-view --usb2     open the card even if it only connected at USB 2.0 speed
+
+set -uo pipefail
+
+CARD=/dev/v4l/by-id/usb-Elgato_Game_Capture_HD60_S+_0004ED30F9000-video-index0
+SHARED=/dev/video11   # the viewer's copy; OBS reads /dev/video10
+AUDIO=alsa_input.usb-Elgato_Game_Capture_HD60_S__0004ED30F9000-03.analog-stereo
+TITLE="HD60 S+ Viewer"
+
+notify() { notify-send -a "HD60 S+" "HD60 S+ Viewer" "$1" 2>/dev/null; echo "$1" >&2; }
+
+if [[ -e $SHARED ]] && systemctl --user is-active --quiet hd60-split; then
+  VIDEO=$SHARED
+else
+  VIDEO=$CARD
+  if [[ ! -e $VIDEO ]]; then
+    notify "Capture card not found - is the HD60 S+ plugged in?"
+    exit 1
+  fi
+  if users=$(fuser "$VIDEO" 2>/dev/null) && [[ -n ${users// /} ]]; then
+    notify "Capture card is in use (PID$users). Start the splitter so OBS and the viewer can share it: systemctl --user start hd60-split"
+    exit 1
+  fi
+  # At USB 2.0 speed the card manages ~9 fps and floods the USB 2 bus.
+  speed=$(cat "$(dirname "$(readlink -f /sys/class/video4linux/"$(basename "$(readlink -f "$VIDEO")")"/device)")/speed" 2>/dev/null)
+  if [[ $speed == 480 && " $* " != *" --usb2 "* ]]; then
+    notify "Card is on USB 2.0 (~9 fps). Replug it into a direct USB 3 port, or run hd60-view --usb2 to start anyway."
+    exit 1
+  fi
+fi
+
+if ! pgrep -x obs >/dev/null; then
+  pw-loopback --name hd60-audio --capture "$AUDIO" --latency 20 &
+  loopback=$!
+  trap 'kill $loopback 2>/dev/null' EXIT
+fi
+
+fullscreen=--fs
+[[ " $* " == *" --window "* ]] && fullscreen=--no-fs
+
+mpv "av://v4l2:$VIDEO" \
+  --title="$TITLE" --wayland-app-id=hd60-viewer $fullscreen \
+  --profile=low-latency --untimed --no-cache --no-audio \
+  --demuxer-lavf-o=input_format=nv12,video_size=1920x1080,framerate=60 \
+  --hwdec=no --no-osc --osd-level=0 --cursor-autohide=500 \
+  --keep-open=no --idle=no

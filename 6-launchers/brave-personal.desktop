@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Brave (Personal)
+GenericName=Web Browser
+Comment=New Brave window on the Personal profile
+Exec=/usr/bin/brave --new-window --profile-directory=Default %U
+Icon=brave-desktop
+Type=Application
+StartupNotify=true
+StartupWMClass=brave-browser
+Categories=Network;WebBrowser;
+MimeType=x-scheme-handler/unknown;x-scheme-handler/about;x-scheme-handler/https;x-scheme-handler/http;text/html;

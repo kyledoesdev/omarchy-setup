@@ -1,0 +1,6 @@
+[Unit]
+Description=Hide Steam game entries from the app menu
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/hide-steam-game-launchers
