@@ -100,11 +100,9 @@
   "dock": {
     "pinned": [
       "brave-browser",
-      "org.gnome.Nautilus",
       "steam",
       "vesktop",
       "spotify",
-      "com.obsproject.Studio",
       "com.anthropic.Claude"
     ]
   },
