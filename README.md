@@ -47,6 +47,8 @@ The pictures and videos come from Steam Workshop items for Wallpaper Engine. The
 
 `hd60-split` splits an Elgato HD60 S+ capture card into two virtual cameras, one for OBS and one for a preview window, so both can show the game at once.
 
+Omarchy 4.5 puts the Elgato Cam Link 4K behind a 720p virtual camera for browsers, but its relay gives up on a camera that sends 1080p60. The overrides in `5-services/system` relay it at 1080p60 on `/dev/video12` instead, so OBS and Discord can both use the camera at once. They also keep the HD60's virtual camera non-exclusive, which OBS needs to read it. After installing them, reboot or run `sudo systemctl daemon-reload` and restart `v4l2-relayd@camlink`.
+
 ## Layout
 
 | Folder | What's there |
@@ -55,7 +57,7 @@ The pictures and videos come from Steam Workshop items for Wallpaper Engine. The
 | `2-hyprland` | Keys, monitors and workspace rules, mouse speed, startup |
 | `3-shell` | Bar layout (`shell.json`), my shell plugins, Omarchy hooks, screensaver art, wallpapers |
 | `4-scripts` | Menus on the main monitor, the capture card scripts, hiding Steam's game launchers, Claude app updates |
-| `5-services` | The systemd user services that run those, my local dev servers, and the capture card's kernel module setting |
+| `5-services` | The systemd user services that run those, my local dev servers, the capture card's kernel module setting and my Cam Link overrides |
 | `6-launchers` | App menu entries: Brave per profile, the HD60 viewer, Slack and Discord |
 | `7-icons` | Dock icons: a custom Files folder, a working OBS logo, a sharp Steam icon |
 | `8-terminals` | Terminal configs (only the font differs from Omarchy) |

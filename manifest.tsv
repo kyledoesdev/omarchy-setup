@@ -56,4 +56,7 @@ file	8-terminals/foot.ini	~/.config/foot/foot.ini
 file	8-terminals/ghostty.config	~/.config/ghostty/config
 file	8-terminals/kitty.conf	~/.config/kitty/kitty.conf
 
-file	5-services/system/v4l2loopback-exclusive-caps.conf	/etc/modprobe.d/v4l2loopback-exclusive-caps.conf
+file	5-services/system/v4l2loopback-hd60.conf	/etc/modprobe.d/v4l2loopback-hd60.conf
+file	5-services/system/camlink-kyle.conf	/etc/v4l2-relayd.d/camlink-kyle.conf
+file	5-services/system/v4l2-relayd@camlink.kyle.conf	/etc/systemd/system/v4l2-relayd@camlink.service.d/kyle.conf
+file	5-services/system/camlink-4k-loopback.kyle.conf	/etc/systemd/system/camlink-4k-loopback.service.d/kyle.conf

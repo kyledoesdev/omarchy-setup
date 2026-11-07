@@ -17,29 +17,24 @@
       ],
       "centerEnd": [
         {
+          "id": "omarchy.elsewhen",
           "cities": [
             {
               "name": "New York",
               "zone": "America/New_York"
             },
             {
-              "name": "London",
-              "zone": "Europe/London"
-            },
-            {
-              "name": "Dubai",
-              "zone": "Asia/Dubai"
-            },
-            {
-              "name": "Tokyo",
-              "zone": "Asia/Tokyo"
+              "name": "Salt Lake City",
+              "zone": "America/Denver",
+              "lat": 40.76078,
+              "lon": -111.89105,
+              "region": "Utah, US"
             },
             {
               "name": "Los Angeles",
               "zone": "America/Los_Angeles"
             }
-          ],
-          "id": "omarchy.elsewhen"
+          ]
         },
         {
           "id": "omarchy.weather"
