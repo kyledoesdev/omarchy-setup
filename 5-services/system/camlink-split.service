@@ -1,0 +1,25 @@
+# Shares the Elgato Cam Link 4K as the virtual camera /dev/video12 ("Cam Link 4K"),
+# so Discord and OBS can both use it at once. Replaces Omarchy's v4l2-relayd
+# relay (masked), which leaked gigabytes and dropped most frames at 1080p60.
+# The Cam Link sends I420 natively, so this is a straight copy, like hd60-split.
+[Unit]
+Description=Share the Cam Link 4K as the virtual camera /dev/video12
+BindsTo=dev-camlink4k.device
+After=dev-camlink4k.device camlink-4k-loopback.service
+Requires=camlink-4k-loopback.service
+
+[Service]
+ExecStart=/usr/bin/ffmpeg -hide_banner -loglevel warning -nostdin -fflags nobuffer -flags low_delay -probesize 32 -analyzeduration 0 -f v4l2 -input_format yuv420p -video_size 1920x1080 -framerate 60000/1001 -i /dev/camlink4k -map 0:v -c:v rawvideo -pix_fmt yuv420p -f v4l2 /dev/video12
+Restart=always
+RestartSec=2
+DevicePolicy=closed
+DeviceAllow=char-video4linux rw
+CapabilityBoundingSet=
+NoNewPrivileges=yes
+PrivateNetwork=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+
+[Install]
+WantedBy=dev-camlink4k.device
