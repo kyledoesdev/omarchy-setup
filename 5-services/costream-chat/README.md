@@ -10,7 +10,7 @@ Runs as a systemd user service (`costream-chat.service`) on http://127.0.0.1:747
 - `/overlay` is the OBS browser source "Chat (Twitch + YouTube)" in the Browser Sources group. Each line has a Twitch or YouTube icon. `?platforms=twitch` makes it Twitch-only.
 - `/youtube-chat` and `/youtube-activity` are the YouTube panels in Streaming mode (Super+3), under the Twitch popouts. "Mod tools" opens YouTube's own popout chat for the current stream.
 - `/chat` shows both chats mixed in one window, if you ever want that instead.
-- Watches OBS through obs-websocket. When the Twitch stream starts, it starts every output in the Aitum Multistream dock (YouTube). When Twitch stops, it stops them.
+- Watches OBS through obs-websocket. When the Twitch stream starts, it starts every output in the Aitum Multistream dock (YouTube) that has a stream key and is switched on. One without a key is skipped with a "Streaming to Twitch only" notification. When Twitch stops, it stops them.
 - The page at http://127.0.0.1:7474 shows status and has a "Send test messages" button.
 
 ## Files

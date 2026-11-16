@@ -597,6 +597,32 @@ async function extraOutputs() {
   return outputs.filter((o) => !o.vertical && (wanted === 'all' || (Array.isArray(wanted) && wanted.includes(o.name))));
 }
 
+// Aitum's get_outputs only gives names, so read its saved settings to find
+// outputs that are switched off or still have no stream key. Aitum writes
+// this file as soon as its settings dialog is closed with OK. The key itself
+// is only checked for being there, never logged.
+const AITUM_CONFIG = '~/.var/app/com.obsproject.Studio/config/obs-studio/plugin_config/aitum-multistream/config.json';
+
+async function aitumNotReady(outputs) {
+  let saved;
+  try {
+    const { currentProfileName } = await obsRequest('GetProfileList');
+    const cfg = JSON.parse(fs.readFileSync(expand(config.obs.aitumConfig || AITUM_CONFIG), 'utf8'));
+    const prof = (cfg.profiles || []).find((p) => p.name === currentProfileName);
+    saved = new Map((prof?.outputs || []).map((o) => [o.name, o]));
+  } catch {
+    return new Map(); // can't tell, so try them all
+  }
+  const notReady = new Map();
+  for (const o of outputs) {
+    const s = saved.get(o.name);
+    if (!s) continue;
+    if (s.enabled === false) notReady.set(o.name, 'switched off');
+    else if (!s.stream_key && !s.key) notReady.set(o.name, 'no stream key');
+  }
+  return notReady;
+}
+
 async function startExtraOutputs() {
   let outputs;
   try {
@@ -609,6 +635,22 @@ async function startExtraOutputs() {
   if (!outputs.length) {
     notify('Only streaming to Twitch', 'No YouTube output is set up in the Aitum Multistream dock yet.');
     return;
+  }
+  const notReady = await aitumNotReady(outputs);
+  if (notReady.size) {
+    const outs = { ...status.obs.outputs };
+    for (const [name, why] of notReady) {
+      log('obs', `not starting "${name}": ${why}`);
+      outs[name] = why;
+    }
+    setStatus('obs', { outputs: outs });
+    const names = [...notReady.keys()].join(' and ');
+    const reasons = [...notReady].map(([n, why]) => (why === 'no stream key' ? `${n} has no stream key yet` : `${n} is switched off`)).join('. ');
+    notify(
+      notReady.size === outputs.length ? 'Streaming to Twitch only' : `Not starting ${names}`,
+      `${reasons}. Set it up in the Aitum Multistream dock to go live there too.`,
+    );
+    outputs = outputs.filter((o) => !notReady.has(o.name));
   }
   for (const o of outputs) {
     try {
