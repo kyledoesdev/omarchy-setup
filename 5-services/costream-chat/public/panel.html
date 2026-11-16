@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stream Chat</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0e0e10;
+    --panel: #18181b;
+    --line: #2f2f35;
+    --text: #efeff1;
+    --muted: #adadb8;
+    --yt: #ff0033;
+    --tw: #9146ff;
+    --live: #eb0400;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 13px/1.45 Inter, "Roobert", system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    min-height: 42px;
+  }
+  header .pf { width: 18px; height: 18px; flex: none; }
+  header .pf svg { width: 100%; height: 100%; display: block; }
+  header h1 {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0;
+    white-space: nowrap;
+  }
+  .pill {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: #2f2f35;
+    color: var(--muted);
+    white-space: nowrap;
+    flex: none;
+  }
+  .pill.live { background: var(--live); color: #fff; }
+  .pill.upcoming { background: #3a3a3d; color: #fff; }
+  .spacer { flex: 1 0 0; }
+  .btn {
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    background: #2f2f35;
+    border: 0;
+    border-radius: 4px;
+    padding: 4px 8px;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .btn:hover { background: #3a3a3d; }
+  main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 0;
+    scrollbar-width: thin;
+    scrollbar-color: #3a3a3d transparent;
+  }
+  .empty {
+    color: var(--muted);
+    text-align: center;
+    padding: 28px 18px;
+  }
+  .msg {
+    padding: 4px 10px;
+    overflow-wrap: anywhere;
+  }
+  .msg:hover { background: #1f1f23; }
+  .meta { white-space: nowrap; }
+  .pf, .badge {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    vertical-align: -3px;
+    margin-right: 3px;
+  }
+  .pf { margin-right: 5px; }
+  .pf svg, .badge svg { width: 100%; height: 100%; display: block; }
+  img.badge { object-fit: contain; }
+  .name { font-weight: 700; }
+  .emote { height: 26px; vertical-align: middle; margin: -4px 1px; }
+  .emote.sticker { height: 56px; margin: 2px 0; }
+  .action .body { font-style: italic; }
+  .kind-superchat, .kind-member, .kind-highlight {
+    margin: 4px 8px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--card, #0f9d58) 55%, var(--bg));
+    padding: 0 0 6px;
+  }
+  .kind-highlight { --card: #755ebc; }
+  .kind-superchat .name, .kind-member .name, .kind-highlight .name { color: #fff !important; }
+  .kind-superchat .line, .kind-member .line, .kind-highlight .line { padding: 4px 10px 0; }
+  .msg-head {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    padding: 5px 10px;
+    border-radius: 6px 6px 0 0;
+    background: rgba(0, 0, 0, 0.18);
+    font-size: 12px;
+  }
+  .amount { font-weight: 800; font-size: 14px; }
+  .resume {
+    position: fixed;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: none;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+    background: var(--tw);
+  }
+  body.paused .resume { display: block; }
+  /* Activity view */
+  .event {
+    margin: 6px 8px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: var(--panel);
+    border-left: 4px solid var(--card, var(--yt));
+  }
+  .event .top { display: flex; gap: 6px; align-items: baseline; }
+  .event .what { font-weight: 700; }
+  .event .when { color: var(--muted); font-size: 11px; margin-left: auto; white-space: nowrap; }
+  .event .who { font-weight: 700; }
+  .event .said { margin-top: 3px; overflow-wrap: anywhere; }
+  .stats { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .btn { flex: none; }
+  body.single .msg .pf { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <span class="pf" id="hdr-icon"></span>
+  <h1 id="hdr-title">Chat</h1>
+  <span class="pill" id="state">Connecting…</span>
+  <span class="spacer"></span>
+  <span class="stats" id="stats"></span>
+  <a class="btn" id="modtools" href="/open/youtube-chat" target="_blank" rel="noopener" title="Open YouTube's own popout chat for this stream (delete, timeout, hide user, reply)">Mod tools ↗</a>
+</header>
+<main id="list"></main>
+<button class="btn resume" id="resume">More messages below</button>
+<script type="module">
+  import { ICONS, connect, renderMessage, renderParts, applyRemoval, timeAgo } from './client.js';
+
+  const view = location.pathname.replace(/^\//, '') || 'chat';
+  const VIEWS = {
+    chat: { title: 'Stream chat', icon: null, platforms: ['twitch', 'youtube'], mode: 'chat' },
+    'youtube-chat': { title: 'YouTube chat', icon: 'youtube', platforms: ['youtube'], mode: 'chat' },
+    'youtube-activity': { title: 'YouTube activity', icon: 'youtube', platforms: ['youtube'], mode: 'activity' },
+  };
+  const cfg = VIEWS[view] || VIEWS.chat;
+  if (cfg.platforms.length === 1) document.body.classList.add('single');
+  document.title = cfg.title;
+  document.getElementById('hdr-title').textContent = cfg.title;
+  if (cfg.icon) document.getElementById('hdr-icon').innerHTML = ICONS[cfg.icon];
+  else document.getElementById('hdr-icon').remove();
+  if (cfg.mode === 'activity') document.getElementById('modtools').remove();
+
+  const list = document.getElementById('list');
+  const stateEl = document.getElementById('state');
+  const statsEl = document.getElementById('stats');
+  const MAX = 300;
+  let stick = true;
+
+  const emptyText = {
+    chat: 'Waiting for chat…',
+    'youtube-chat': "YouTube isn't live right now. Chat shows up here as soon as the stream starts.",
+    'youtube-activity': 'Super Chats, Super Stickers, new members and gifted memberships from YouTube show up here.',
+  }[view] || 'Waiting for chat…';
+
+  function showEmpty() {
+    if (!list.querySelector('.msg, .event')) {
+      list.replaceChildren(Object.assign(document.createElement('div'), { className: 'empty', textContent: emptyText }));
+    }
+  }
+  function clearEmpty() {
+    list.querySelector('.empty')?.remove();
+  }
+
+  list.addEventListener('scroll', () => {
+    if (cfg.mode !== 'chat') return;
+    stick = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
+    document.body.classList.toggle('paused', !stick);
+  });
+  document.getElementById('resume').onclick = () => {
+    stick = true;
+    list.scrollTop = list.scrollHeight;
+    document.body.classList.remove('paused');
+  };
+
+  function addMessage(m, scroll = true) {
+    if (!cfg.platforms.includes(m.platform)) return;
+    clearEmpty();
+    list.append(renderMessage(m));
+    while (list.querySelectorAll('.msg').length > MAX) list.querySelector('.msg').remove();
+    if (scroll && stick) list.scrollTop = list.scrollHeight;
+  }
+
+  function renderEvent(ev) {
+    const card = document.createElement('div');
+    card.className = 'event';
+    card.dataset.ts = ev.ts;
+    const color = ev.headerBg || ev.bg || { member: '#0f9d58', gift: '#0f9d58', 'gift-received': '#0f9d58' }[ev.type];
+    if (color) card.style.setProperty('--card', color);
+    const top = document.createElement('div');
+    top.className = 'top';
+    const who = Object.assign(document.createElement('span'), { className: 'who', textContent: ev.name });
+    const what = Object.assign(document.createElement('span'), { className: 'what', textContent: ev.amount || '' });
+    const when = Object.assign(document.createElement('span'), { className: 'when', textContent: timeAgo(ev.ts) });
+    top.append(who, what, when);
+    card.append(top);
+    const desc = Object.assign(document.createElement('div'), { className: 'said', textContent: ev.text });
+    desc.style.color = 'var(--muted)';
+    card.append(desc);
+    if (ev.parts?.length) {
+      const said = Object.assign(document.createElement('div'), { className: 'said' });
+      renderParts(ev.parts, said);
+      card.append(said);
+    }
+    return card;
+  }
+
+  function addEvent(ev) {
+    clearEmpty();
+    list.prepend(renderEvent(ev));
+    while (list.children.length > 100) list.lastElementChild.remove();
+  }
+
+  function updateStatus(s) {
+    const yt = s.youtube;
+    if (cfg.platforms.length === 1) {
+      stateEl.className = 'pill';
+      if (yt.state === 'live') {
+        stateEl.classList.add('live');
+        stateEl.textContent = 'LIVE';
+      } else if (yt.state === 'upcoming') {
+        stateEl.classList.add('upcoming');
+        stateEl.textContent = 'Starting soon';
+      } else {
+        stateEl.textContent = s.obs.streaming ? 'Waiting for YouTube…' : 'Offline';
+      }
+      stateEl.title = yt.title || '';
+      const bits = [];
+      if (yt.viewers != null && yt.state === 'live') bits.push(`${Number(yt.viewers).toLocaleString()} watching`);
+      if (cfg.mode === 'activity' && yt.likes) bits.push(`${yt.likes} likes`);
+      statsEl.textContent = bits.join(' · ');
+    } else {
+      const parts = [];
+      parts.push(s.twitch.connected ? 'Twitch ✓' : 'Twitch …');
+      parts.push(yt.state === 'live' ? 'YouTube LIVE' : yt.state === 'upcoming' ? 'YouTube soon' : 'YouTube offline');
+      stateEl.className = 'pill' + (yt.state === 'live' ? ' live' : '');
+      stateEl.textContent = parts.join(' · ');
+    }
+  }
+
+  connect({
+    hello: (d) => {
+      list.replaceChildren();
+      if (cfg.mode === 'activity') d.activity.forEach(addEvent);
+      else d.history.forEach((m) => addMessage(m, false));
+      list.scrollTop = cfg.mode === 'chat' ? list.scrollHeight : 0;
+      showEmpty();
+      updateStatus(d.status);
+    },
+    status: updateStatus,
+    msg: (m) => cfg.mode === 'chat' && addMessage(m),
+    activity: (ev) => cfg.mode === 'activity' && addEvent(ev),
+    delete: (d) => applyRemoval(list, 'delete', d),
+    'clear-user': (d) => applyRemoval(list, 'clear-user', d),
+    'clear-all': (d) => applyRemoval(list, 'clear-all', d),
+    down: () => {
+      stateEl.className = 'pill';
+      stateEl.textContent = 'Reconnecting…';
+    },
+  });
+
+  // Keep "5m ago" labels fresh in the activity view.
+  setInterval(() => {
+    for (const c of list.querySelectorAll('.event')) {
+      const w = c.querySelector('.when');
+      if (w) w.textContent = timeAgo(Number(c.dataset.ts));
+    }
+  }, 30000);
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "port": 7474,
+  "twitch": {
+    "channel": "spacelampsix"
+  },
+  "youtube": {
+    "channelId": "UCZJal_mY7laq3UUk9QjJPqw",
+    "handle": "@spacelampsix"
+  },
+  "obs": {
+    "websocketConfig": "~/.var/app/com.obsproject.Studio/config/obs-studio/plugin_config/obs-websocket/config.json",
+    "autostartOutputs": "all"
+  }
+}

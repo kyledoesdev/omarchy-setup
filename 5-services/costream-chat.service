@@ -1,0 +1,12 @@
+[Unit]
+Description=Co-stream chat: merged Twitch + YouTube chat overlay and panels, and OBS YouTube auto-start (http://127.0.0.1:7474)
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/.local/share/costream-chat
+ExecStart=%h/.local/share/mise/installs/node/latest/bin/node server.js
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

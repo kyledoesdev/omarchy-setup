@@ -6,3 +6,4 @@ lifeos-serve.service
 lifeos-serve-env.path
 songrank-serve.service
 mysql8.service
+costream-chat.service

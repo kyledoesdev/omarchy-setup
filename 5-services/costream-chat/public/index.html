@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Co-stream Chat</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #0e0e10; color: #efeff1; font: 14px/1.5 Inter, system-ui, sans-serif; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 28px 16px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p { color: #adadb8; margin: 0 0 20px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+  td { padding: 8px 10px; border-bottom: 1px solid #2f2f35; vertical-align: top; }
+  td:first-child { color: #adadb8; width: 170px; }
+  a { color: #bf94ff; }
+  code { background: #18181b; padding: 2px 6px; border-radius: 4px; }
+  .ok { color: #00f593; }
+  .bad { color: #ff8280; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Co-stream chat</h1>
+  <p>Twitch + YouTube chat for Spacelamp6, running on this computer.</p>
+  <table id="status"><tr><td>Status</td><td>Loading…</td></tr></table>
+  <table>
+    <tr><td>OBS overlay</td><td><a href="/overlay">/overlay</a> (Twitch + YouTube) · <a href="/overlay?platforms=twitch">Twitch only</a></td></tr>
+    <tr><td>YouTube chat</td><td><a href="/youtube-chat">/youtube-chat</a></td></tr>
+    <tr><td>YouTube activity</td><td><a href="/youtube-activity">/youtube-activity</a></td></tr>
+    <tr><td>Both chats mixed</td><td><a href="/chat">/chat</a></td></tr>
+    <tr><td>YouTube mod tools</td><td><a href="/open/youtube-chat">/open/youtube-chat</a> (YouTube's own popout for the current stream)</td></tr>
+    <tr><td>Raw status</td><td><a href="/api/status">/api/status</a></td></tr>
+  </table>
+  <p><button id="test" style="font: inherit; font-weight: 600; color: #fff; background: #9146ff; border: 0; border-radius: 4px; padding: 6px 12px; cursor: pointer">Send test messages</button>
+  &nbsp;Shows a few fake Twitch and YouTube messages (and a Super Chat) on the overlay and panels so you can check how they look.</p>
+</div>
+<script>
+  const row = (k, v, cls) => `<tr><td>${k}</td><td class="${cls || ''}">${v}</td></tr>`;
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  async function refresh() {
+    try {
+      const s = await (await fetch('/api/status')).json();
+      const outs = Object.entries(s.obs.outputs || {}).map(([k, v]) => `${esc(k)}: ${esc(v)}`).join(', ') || 'none yet';
+      document.getElementById('status').innerHTML =
+        row('Twitch chat', s.twitch.connected ? `connected to #${esc(s.twitch.channel)}` : 'connecting…', s.twitch.connected ? 'ok' : 'bad') +
+        row('YouTube', s.youtube.state === 'offline' ? 'not live' : `${esc(s.youtube.state)}: ${esc(s.youtube.title)}${s.youtube.viewers != null ? ` (${esc(s.youtube.viewers)} watching)` : ''}`, s.youtube.state === 'live' ? 'ok' : '') +
+        row('OBS', s.obs.connected ? (s.obs.streaming ? 'connected, streaming' : 'connected, not streaming') : esc(s.obs.note || 'not running'), s.obs.connected ? 'ok' : '') +
+        row('Extra outputs', outs);
+    } catch {
+      document.getElementById('status').innerHTML = row('Status', 'service not reachable', 'bad');
+    }
+  }
+  refresh();
+  setInterval(refresh, 3000);
+  document.getElementById('test').onclick = () => fetch('/api/test', { method: 'POST' });
+</script>
+</body>
+</html>

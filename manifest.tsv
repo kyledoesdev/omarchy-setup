@@ -41,6 +41,18 @@ file	5-services/dev-servers/songrank-serve.service	~/.config/systemd/user/songra
 file	5-services/dev-servers/mysql8.service	~/.config/systemd/user/mysql8.service
 file	5-services/dev-servers/Caddyfile	/etc/caddy/Caddyfile
 
+# Co-streaming chat service (npm install in its folder after installing)
+file	5-services/costream-chat/server.js	~/.local/share/costream-chat/server.js
+file	5-services/costream-chat/config.json	~/.local/share/costream-chat/config.json
+file	5-services/costream-chat/package.json	~/.local/share/costream-chat/package.json
+file	5-services/costream-chat/package-lock.json	~/.local/share/costream-chat/package-lock.json
+file	5-services/costream-chat/README.md	~/.local/share/costream-chat/README.md
+file	5-services/costream-chat/public/client.js	~/.local/share/costream-chat/public/client.js
+file	5-services/costream-chat/public/index.html	~/.local/share/costream-chat/public/index.html
+file	5-services/costream-chat/public/overlay.html	~/.local/share/costream-chat/public/overlay.html
+file	5-services/costream-chat/public/panel.html	~/.local/share/costream-chat/public/panel.html
+file	5-services/costream-chat/tools/apply-obs-setup.py	~/.local/share/costream-chat/tools/apply-obs-setup.py
+
 file	6-launchers/brave-personal.desktop	~/.local/share/applications/brave-personal.desktop
 file	6-launchers/brave-work.desktop	~/.local/share/applications/brave-work.desktop
 file	6-launchers/hd60-viewer.desktop	~/.local/share/applications/hd60-viewer.desktop
@@ -59,3 +71,4 @@ file	8-terminals/kitty.conf	~/.config/kitty/kitty.conf
 file	5-services/system/v4l2loopback-hd60.conf	/etc/modprobe.d/v4l2loopback-hd60.conf
 file	5-services/system/camlink-4k-loopback.kyle.conf	/etc/systemd/system/camlink-4k-loopback.service.d/kyle.conf
 file	5-services/system/camlink-split.service	/etc/systemd/system/camlink-split.service
+file	5-services/costream-chat.service	~/.config/systemd/user/costream-chat.service

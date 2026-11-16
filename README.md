@@ -49,6 +49,8 @@ The pictures and videos come from Steam Workshop items for Wallpaper Engine. The
 
 Omarchy 4.5 puts the Elgato Cam Link 4K behind a 720p virtual camera for browsers, but its relay (`v4l2-relayd`) can't keep up with a camera that sends 1080p60: it drops most frames and leaks memory until apps crash. `camlink-split.service` replaces it with a plain ffmpeg copy to `/dev/video12` ("Cam Link 4K"), so OBS and Discord can both use the camera at once. After installing the files in `5-services/system`, run `sudo systemctl mask v4l2-relayd@camlink.service`, `sudo systemctl daemon-reload` and `sudo systemctl enable --now camlink-split.service`. The HD60 loopback setting there also keeps its virtual camera non-exclusive, which OBS needs to read it.
 
+Co-streaming goes to Twitch (primary) and YouTube at once. OBS streams to Twitch as usual, and the [Aitum Multistream](https://github.com/Aitum/obs-aitum-multistream) plugin (Flathub: `com.obsproject.Studio.Plugin.AitumMultistream`) sends the same video to YouTube. `costream-chat` (in `5-services/costream-chat`, a small Node service on `127.0.0.1:7474`) watches OBS through obs-websocket and starts or stops the YouTube output whenever the Twitch stream starts or stops. It also reads Twitch and YouTube chat with no logins and serves the OBS chat overlay (`/overlay`, with a platform icon on each line) and the YouTube chat and activity panels that Streaming mode stacks under the Twitch popouts. To set it up, copy it to `~/.local/share/costream-chat`, run `npm install` there, enable `costream-chat.service`, then close OBS and run `tools/apply-obs-setup.py`. Paste the YouTube stream key in OBS's Multistream dock afterward. Stream keys stay in OBS's own config, which this repo doesn't track.
+
 ## Layout
 
 | Folder | What's there |
@@ -57,7 +59,7 @@ Omarchy 4.5 puts the Elgato Cam Link 4K behind a 720p virtual camera for browser
 | `2-hyprland` | Keys, monitors and workspace rules, mouse speed, startup |
 | `3-shell` | Bar layout (`shell.json`), my shell plugins, Omarchy hooks, screensaver art, wallpapers |
 | `4-scripts` | Menus on the main monitor, the capture card scripts, hiding Steam's game launchers, Claude app updates |
-| `5-services` | The systemd user services that run those, my local dev servers, the capture card's kernel module setting and my Cam Link overrides |
+| `5-services` | The systemd user services that run those, my local dev servers, the capture card's kernel module setting, my Cam Link overrides and the co-streaming chat service |
 | `6-launchers` | App menu entries: Brave per profile, the HD60 viewer, Slack and Discord |
 | `7-icons` | Dock icons: a custom Files folder, a working OBS logo, a sharp Steam icon |
 | `8-terminals` | Terminal configs (only the font differs from Omarchy) |
