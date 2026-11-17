@@ -7,7 +7,7 @@
   OBS browser source. Twitch + YouTube chat with a platform icon on each line.
   URL options (all optional):
     ?platforms=twitch          Twitch only (or youtube, or twitch,youtube)
-    &fade=30                   hide each message after 30 seconds (0 = never)
+    &fade=30                   hide each message after 30 seconds (default 120, 0 = never)
     &max=40                    messages kept on screen
     &size=24                   font size in px
     &font=Fredoka%20One        any Google Font name
@@ -102,7 +102,7 @@
 
   const q = new URLSearchParams(location.search);
   const platforms = new Set((q.get('platforms') || 'twitch,youtube').split(',').map((s) => s.trim().toLowerCase()));
-  const fade = Number(q.get('fade') || 0);
+  const fade = Number(q.get('fade') ?? 120);
   const max = Number(q.get('max') || 40);
   if (q.get('size')) document.documentElement.style.setProperty('--size', `${Number(q.get('size'))}px`);
   if (q.get('font')) {
@@ -116,6 +116,10 @@
 
   function add(m) {
     if (!platforms.has(m.platform)) return;
+    // Time left on screen, counted from when the message was sent, so lines
+    // brought back after a refresh still go away on schedule.
+    const left = fade > 0 ? fade * 1000 - Math.max(0, Date.now() - (m.ts || Date.now())) : Infinity;
+    if (left <= 0) return;
     const row = renderMessage(m);
     if (window.twemoji) {
       try {
@@ -124,20 +128,20 @@
     }
     chat.append(row);
     while (chat.children.length > max) chat.firstElementChild.remove();
-    if (fade > 0) {
+    if (left !== Infinity) {
       setTimeout(() => {
         row.classList.add('gone');
         setTimeout(() => row.remove(), 700);
-      }, fade * 1000);
+      }, left);
     }
   }
 
   connect({
     // On (re)connect only keep a few recent lines so a refreshed source
-    // doesn't flood the screen.
+    // doesn't flood the screen. With fading on, add() drops any that are
+    // already past their time.
     hello: (d) => {
       chat.replaceChildren();
-      if (fade > 0) return;
       d.history.filter((m) => Date.now() - m.ts < 10 * 60 * 1000).slice(-8).forEach(add);
     },
     msg: add,
