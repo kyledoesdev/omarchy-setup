@@ -748,7 +748,9 @@ function connectObs() {
     } else if (msg.op === 5) {
       if (d.eventType === 'StreamStateChanged') onStreamState(d.eventData?.outputState);
       else if (d.eventType === 'VendorEvent' && d.eventData?.vendorName === 'aitum-multistream') {
-        const name = d.eventData?.eventData?.name;
+        // Aitum's events use the OBS output's internal name
+        // ("aitum_multi_output_YouTube"); its requests use the dock name ("YouTube").
+        const name = d.eventData?.eventData?.name?.replace(/^aitum_multi_output_/, '');
         const type = d.eventData?.eventType;
         if (!name) return;
         if (type === 'output_started') {
