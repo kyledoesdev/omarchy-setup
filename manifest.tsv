@@ -51,6 +51,7 @@ file	5-services/costream-chat/public/client.js	~/.local/share/costream-chat/publ
 file	5-services/costream-chat/public/index.html	~/.local/share/costream-chat/public/index.html
 file	5-services/costream-chat/public/overlay.html	~/.local/share/costream-chat/public/overlay.html
 file	5-services/costream-chat/public/panel.html	~/.local/share/costream-chat/public/panel.html
+file	5-services/costream-chat/public/youtube-studio-chat.html	~/.local/share/costream-chat/public/youtube-studio-chat.html
 file	5-services/costream-chat/tools/apply-obs-setup.py	~/.local/share/costream-chat/tools/apply-obs-setup.py
 
 file	6-launchers/brave-personal.desktop	~/.local/share/applications/brave-personal.desktop

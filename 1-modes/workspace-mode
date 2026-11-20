@@ -49,7 +49,9 @@ declare -A CLASS=(
   [twitch_feed]='^brave-dashboard\.twitch\.tv__popout_u_spacelampsix_stream-manager_activity-feed-Default$'
   # YouTube panels served by the costream-chat service (systemd user unit,
   # ~/.local/share/costream-chat). Twitch keeps its own popouts for mod tools.
-  [youtube_chat]='^brave-127\.0\.0\.1.*__youtube-chat-Default$'
+  # Starts on the co-stream waiting page, which turns into YouTube Studio's
+  # popout chat once the stream is live (a new video ID every stream).
+  [youtube_chat]='^brave-(127\.0\.0\.1.*__youtube-studio-chat|studio\.youtube\.com__live_chat)-Default$'
   [youtube_activity]='^brave-127\.0\.0\.1.*__youtube-activity-Default$'
   # OBS's windowed projector of the HD60 S+ (OBS reopens it on launch: "Save projectors on exit")
   [capture_projector]='^(com\.obsproject\.Studio|obs)$'
@@ -80,7 +82,7 @@ declare -A LAUNCH=(
   [obs]='uwsm-app -- flatpak run com.obsproject.Studio'
   [twitch_chat]='uwsm-app -- brave --profile-directory=Default --app=https://dashboard.twitch.tv/popout/u/spacelampsix/stream-manager/chat?uuid=10d38a8595763182a8fb1ffb438d85f9'
   [twitch_feed]='uwsm-app -- brave --profile-directory=Default --app=https://dashboard.twitch.tv/popout/u/spacelampsix/stream-manager/activity-feed?uuid=fa9acb6a91770025f4b3660a6d4b7648'
-  [youtube_chat]='uwsm-app -- brave --profile-directory=Default --app=http://127.0.0.1:7474/youtube-chat'
+  [youtube_chat]='uwsm-app -- brave --profile-directory=Default --app=http://127.0.0.1:7474/youtube-studio-chat'
   [youtube_activity]='uwsm-app -- brave --profile-directory=Default --app=http://127.0.0.1:7474/youtube-activity'
 )
 # Search scope for Brave windows. Each Brave profile/instance can only open new
