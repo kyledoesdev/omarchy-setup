@@ -129,6 +129,8 @@ const twitch = {
   badges: new Map(), // "set/version" -> { url, title }
   emotes: new Map(), // third-party emote name -> url
   backoff: 1000,
+  badgeTimer: null,
+  badgeRetry: 15000,
 };
 
 const TWITCH_DEFAULT_COLORS = ['#FF0000', '#0000FF', '#008000', '#B22222', '#FF7F50', '#9ACD32', '#FF4500', '#2E8B57', '#DAA520', '#D2691E', '#5F9EA0', '#1E90FF', '#FF69B4', '#8A2BE2', '#00FF7F'];
@@ -144,8 +146,13 @@ async function getJson(url) {
   return res.json();
 }
 
+// Badge images and titles, global first so the channel's own sub badges win.
+// At boot the network is often not up yet, so a failed load retries soon
+// (15s, doubling up to 10 min) instead of waiting for the 6-hour refresh.
+// Whatever did load is kept, so one failed request never empties the list.
 async function loadTwitchBadges() {
-  const map = new Map();
+  clearTimeout(twitch.badgeTimer);
+  const map = new Map(twitch.badges);
   const add = (sets) => {
     for (const set of sets || []) {
       for (const v of set.versions || []) {
@@ -153,14 +160,46 @@ async function loadTwitchBadges() {
       }
     }
   };
-  try {
-    add(await getJson('https://api.ivr.fi/v2/twitch/badges/global'));
-    add(await getJson(`https://api.ivr.fi/v2/twitch/badges/channel?login=${encodeURIComponent(config.twitch.channel)}`));
-    twitch.badges = map;
-    log('twitch', `loaded ${map.size} badges`);
-  } catch (e) {
-    log('twitch', 'badge load failed:', e.message);
+  const results = await Promise.allSettled([
+    getJson('https://api.ivr.fi/v2/twitch/badges/global'),
+    getJson(`https://api.ivr.fi/v2/twitch/badges/channel?login=${encodeURIComponent(config.twitch.channel)}`),
+  ]);
+  const failed = results.filter((r) => r.status === 'rejected');
+  for (const r of results) if (r.status === 'fulfilled') add(r.value);
+  twitch.badges = map;
+  if (failed.length) {
+    log('twitch', `badge load failed (${failed.map((r) => r.reason?.message).join(', ')}), ${map.size} badges so far, retrying in ${twitch.badgeRetry / 1000}s`);
+    twitch.badgeTimer = setTimeout(loadTwitchBadges, twitch.badgeRetry);
+    twitch.badgeRetry = Math.min(twitch.badgeRetry * 2, 10 * 60 * 1000);
+    return;
   }
+  log('twitch', `loaded ${map.size} badges`);
+  twitch.badgeRetry = 15000;
+  twitch.badgeTimer = setTimeout(loadTwitchBadges, 6 * 3600 * 1000);
+}
+
+// A badge version that isn't in the list (a sub tier the channel added since
+// the last load, say) gets the closest lower version from the same set. Sub
+// badges stay within their tier: 3018 means tier 3 at 18 months, so it
+// falls back to 3012, never 2024.
+function findTwitchBadge(key) {
+  const exact = twitch.badges.get(key);
+  if (exact) return exact;
+  const [set, version] = key.split('/');
+  const wanted = Number(version);
+  if (!set || !Number.isFinite(wanted)) return null;
+  const tier = (n) => (set === 'subscriber' ? Math.floor(n / 1000) : 0);
+  let best = null;
+  let bestVersion = -Infinity;
+  for (const [k, badge] of twitch.badges) {
+    const [s, v] = k.split('/');
+    const n = Number(v);
+    if (s === set && Number.isFinite(n) && n <= wanted && n > bestVersion && tier(n) === tier(wanted)) {
+      best = badge;
+      bestVersion = n;
+    }
+  }
+  return best;
 }
 
 async function loadThirdPartyEmotes() {
@@ -265,7 +304,7 @@ function twitchBadges(tag) {
   if (!tag) return [];
   return tag
     .split(',')
-    .map((b) => twitch.badges.get(b))
+    .map(findTwitchBadge)
     .filter(Boolean);
 }
 
@@ -865,7 +904,6 @@ server.listen(config.port, '127.0.0.1', () => {
 });
 
 loadTwitchBadges();
-setInterval(loadTwitchBadges, 6 * 3600 * 1000);
 setInterval(loadThirdPartyEmotes, 10 * 60 * 1000);
 connectTwitch();
 checkYouTube();
