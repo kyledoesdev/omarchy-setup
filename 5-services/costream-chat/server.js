@@ -437,7 +437,8 @@ async function checkYouTube() {
     if (videoId) {
       const info = await (await ytClient()).getInfo(videoId);
       if (info.basic_info.is_live || info.basic_info.is_upcoming) {
-        connectYouTubeChat(info);
+        // Two checks can overlap at startup mid-stream; only the first connects.
+        if (!yt.chat) connectYouTubeChat(info);
         return;
       }
     }
@@ -780,7 +781,7 @@ function connectObs() {
       setStatus('obs', { connected: true, note: null });
       try {
         const s = await obsRequest('GetStreamStatus');
-        const active = !!s?.responseData?.outputActive;
+        const active = !!s?.outputActive;
         setStatus('obs', { streaming: active });
         if (active) scheduleYouTubeCheck(1000);
       } catch {}
